@@ -33,6 +33,7 @@
 	},
 	"dependencies": {
 		"@bananocoin/bananojs": "^2.2.2",
+		"cors": "^2.8.5",
 		"express": "^4.17.1",
 		"handy-redis": "^2.2.1",
 		"redis": "^3.0.2",

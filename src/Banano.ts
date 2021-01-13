@@ -44,7 +44,8 @@ class Banano {
 		const notification = JSON.parse(msg.utf8Data);
 		const sender = notification.message.account;
 		const receiver = notification.message.block.link_as_account;
-		const amount = notification.message.amount / 100000000000000000000000000000;
+		const rawAmount = notification.message.amount;
+		const amount = rawAmount.substring(0, rawAmount.length - 11);
 		const { hash } = notification.message;
 
 		// log.trace(`Received message ${JSON.stringify(notification)}`);
@@ -59,30 +60,6 @@ class Banano {
 		}
 		// record the user deposit
 		this.usersDepositsStorage.storeUserDeposit(sender, amount, hash);
-		/*
-		{
-			"topic": "confirmation",
-			"time": "1610533780631",
-			"message": {
-				"account": "ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o",
-				"amount": "100000000000000000000000000000",
-				"hash": "38E435918D24A63E20822703184893CC44AAA593E52F8E42DA9FBFA35ED1C4AA",
-				"confirmation_type": "active_quorum",
-				"block": {
-					"type": "state",
-					"account": "ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o",
-					"previous": "8229F7C486BA5A271685EB2275BA08A5A7CA5B587812276544EC957F2BE06046",
-					"representative": "ban_1tipbotgges3ss8pso6xf76gsyqnb69uwcxcyhouym67z7ofefy1jz7kepoy",
-					"balance": "63162000000000000000000000000000",
-					"link": "0A129193816FC22B61B74020B874F3C9967EBC75BDE9ECACB95832737BBAD905",
-					"link_as_account": "ban_14ikk8br4uy47fiugi31q3th9kephty9dhhbxkpdkp3kgfxuopa7g98dmzrm",
-					"signature": "D5089CF008A33874042A329351254698A445E467B86B7F89E480B47574EB78DA3A7335E7819304C696E0284F484B548C7679FB08EA8089B30EBF0F9C67E8FF03",
-					"work": "ebbd560ba96c6cfc",
-					"subtype": "send"
-				}
-			}
-		}
-		*/
 	}
 
 	private wsConnectionEstablished(conn: WS.connection): void {

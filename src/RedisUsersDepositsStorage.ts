@@ -1,5 +1,6 @@
 import { Logger } from "tslog";
 import { createNodeRedisClient } from "handy-redis";
+import BigNumber from "@bananocoin/bananojs";
 import { UsersDepositsStorage } from "./UsersDepositsStorage";
 import config from "./config";
 
@@ -28,6 +29,15 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			.multi()
 			.incrbyfloat(from, amount)
 			.sadd(`txn-${from}`, hash)
+			.exec();
+	}
+
+	async storeUserSwap(from: string, amount: BigNumber): Promise<void> {
+		this.log.info(`Storing swap of ${amount} BAN for user ${from}`);
+		await this.redis
+			.multi()
+			.incrbyfloat(from, -1 * amount)
+			.lpush(`swaps-${from}`, amount)
 			.exec();
 	}
 }
