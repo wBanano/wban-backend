@@ -1,7 +1,7 @@
 import * as banano from "@bananocoin/bananojs";
 import * as WS from "websocket";
 import { Logger } from "tslog";
-import { UsersDepositsStorage } from "./UsersDepositsStorage";
+import { UsersDepositsService } from "./UsersDepositsService";
 import config from "./config";
 
 const BANANO_API_URL = "https://kaliumapi.appditto.com/api";
@@ -10,16 +10,16 @@ const log: Logger = new Logger();
 class Banano {
 	private usersDepositsWallet: string;
 
-	private usersDepositsStorage: UsersDepositsStorage;
+	private usersDepositsStorage: UsersDepositsService;
 
 	private ws: WS.client;
 
 	constructor(
 		usersDepositsWallet: string,
-		usersDepositsStorage: UsersDepositsStorage
+		usersDepositsService: UsersDepositsService
 	) {
 		this.usersDepositsWallet = usersDepositsWallet;
-		this.usersDepositsStorage = usersDepositsStorage;
+		this.usersDepositsStorage = usersDepositsService;
 
 		banano.setBananodeApiUrl(BANANO_API_URL); // TODO: try to connect to local node instead!
 		// TODO: periodically run this method!

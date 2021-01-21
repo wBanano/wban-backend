@@ -40,6 +40,14 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			.lpush(`swaps-${from}`, amount)
 			.exec();
 	}
+
+	async containsTransaction(from: string, hash: string): Promise<boolean> {
+		this.log.info(
+			`Checking if transaction from ${from} with hash ${hash} was already processed...`
+		);
+		const isAlreadyStored = await this.redis.sismember(`txn-${from}`, hash);
+		return isAlreadyStored === 1;
+	}
 }
 
 export { RedisUsersDepositsStorage };

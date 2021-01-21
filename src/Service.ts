@@ -1,21 +1,21 @@
 import { Logger } from "tslog";
 import { Banano } from "./Banano";
 import config from "./config";
-import { UsersDepositsStorage } from "./UsersDepositsStorage";
+import { UsersDepositsService } from "./UsersDepositsService";
 
 class Service {
 	private banano: Banano;
 
-	private usersDepositsStorage: UsersDepositsStorage;
+	private usersDepositsService: UsersDepositsService;
 
 	private log: Logger = new Logger();
 
-	constructor(usersDepositsStorage: UsersDepositsStorage) {
+	constructor(usersDepositsService: UsersDepositsService) {
 		this.banano = new Banano(
 			config.BananoUsersDepositsWallet,
-			usersDepositsStorage
+			usersDepositsService
 		);
-		this.usersDepositsStorage = usersDepositsStorage;
+		this.usersDepositsService = usersDepositsService;
 	}
 
 	async start(): Promise<void> {
@@ -23,7 +23,7 @@ class Service {
 	}
 
 	async getUserAvailableBalance(from: string): Promise<number> {
-		return this.usersDepositsStorage.getUserAvailableBalance(from);
+		return this.usersDepositsService.getUserAvailableBalance(from);
 	}
 
 	async swap(
@@ -34,7 +34,7 @@ class Service {
 		// TODO: verify signature
 		this.log.debug(`TODO: Checking signature '${signature}'`);
 		// TODO: check if deposits are greater than or equal to amount to swap
-		const availableBalance: number = await this.usersDepositsStorage.getUserAvailableBalance(
+		const availableBalance: number = await this.usersDepositsService.getUserAvailableBalance(
 			from
 		);
 		if (availableBalance < amount) {
@@ -42,7 +42,7 @@ class Service {
 		}
 
 		// decrease user deposits
-		await this.usersDepositsStorage.storeUserSwap(from, amount);
+		await this.usersDepositsService.storeUserSwap(from, amount);
 		// TODO: mint wBAN tokens
 		return true;
 	}

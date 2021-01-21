@@ -8,6 +8,7 @@ interface UsersDepositsStorage {
 		hash: string
 	): Promise<void>;
 	storeUserSwap(from: string, amount: number): Promise<void>;
+	containsTransaction(from: string, hash: string): Promise<boolean>;
 }
 
 export { UsersDepositsStorage };

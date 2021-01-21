@@ -4,6 +4,7 @@ import { Logger } from "tslog";
 import { Service } from "./Service";
 import { UsersDepositsStorage } from "./UsersDepositsStorage";
 import { RedisUsersDepositsStorage } from "./RedisUsersDepositsStorage";
+import { UsersDepositsService } from "./UsersDepositsService";
 
 const app = express();
 const PORT = 3000;
@@ -12,7 +13,10 @@ const log: Logger = new Logger();
 app.use(cors());
 
 const usersDepositsStorage: UsersDepositsStorage = new RedisUsersDepositsStorage();
-const svc = new Service(usersDepositsStorage);
+const usersDepositsService: UsersDepositsService = new UsersDepositsService(
+	usersDepositsStorage
+);
+const svc = new Service(usersDepositsService);
 svc.start();
 
 app.get("/health", (req, res) => {
