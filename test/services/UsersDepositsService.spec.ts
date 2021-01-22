@@ -1,8 +1,8 @@
 import chai from "chai";
 import * as sinon from "ts-sinon";
 import sinonChai from "sinon-chai";
-import { UsersDepositsService } from "../src/UsersDepositsService";
-import { UsersDepositsStorage } from "../src/UsersDepositsStorage";
+import { UsersDepositsService } from "../../src/services/UsersDepositsService";
+import { UsersDepositsStorage } from "../../src/storage/UsersDepositsStorage";
 
 const { expect } = chai;
 chai.use(sinonChai);

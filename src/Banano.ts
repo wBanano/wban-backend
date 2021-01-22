@@ -1,11 +1,10 @@
 import * as banano from "@bananocoin/bananojs";
 import * as WS from "websocket";
 import { Logger } from "tslog";
-import { UsersDepositsService } from "./UsersDepositsService";
+import { UsersDepositsService } from "./services/UsersDepositsService";
 import config from "./config";
 
 const BANANO_API_URL = "https://kaliumapi.appditto.com/api";
-const log: Logger = new Logger();
 
 class Banano {
 	private usersDepositsWallet: string;
@@ -13,6 +12,8 @@ class Banano {
 	private usersDepositsStorage: UsersDepositsService;
 
 	private ws: WS.client;
+
+	private log: Logger = new Logger();
 
 	constructor(
 		usersDepositsWallet: string,
@@ -26,15 +27,15 @@ class Banano {
 		// Banano.fetchWalletHistory(usersDepositsWallet);
 	}
 
-	async subscribeToBananoNotificationsForWallet(): Promise<void> {
-		log.info(
+	subscribeToBananoNotificationsForWallet(): void {
+		this.log.info(
 			`Subscribing to wallet notifications for '${this.usersDepositsWallet}'...`
 		);
 		// eslint-disable-next-line new-cap
 		this.ws = new WS.client();
 		this.ws.addListener("connectFailed", Banano.wsConnectionFailed.bind(this));
 		this.ws.addListener("connect", this.wsConnectionEstablished.bind(this));
-		log.debug(
+		this.log.debug(
 			`Connecting to banano node at '${config.BananoWebSocketsAPI}'...`
 		);
 		this.ws.connect(`ws://${config.BananoWebSocketsAPI}`);
@@ -49,21 +50,23 @@ class Banano {
 		const { hash } = notification.message;
 
 		// log.trace(`Received message ${JSON.stringify(notification)}`);
-		log.info(`User ${sender} deposited ${amount} BAN in transaction ${hash}`);
+		this.log.info(
+			`User ${sender} deposited ${amount} BAN in transaction ${hash}`
+		);
 
 		// ensure funds where sent to the proper wall, just in case
 		if (this.usersDepositsWallet !== receiver) {
-			log.error(
+			this.log.error(
 				`BAN were deposited to another wallet than the users deposit wallet: ${receiver}`
 			);
-			log.error("Ignoring this deposit");
+			this.log.error("Ignoring this deposit");
 		}
 		// record the user deposit
 		this.usersDepositsStorage.storeUserDeposit(sender, amount, hash);
 	}
 
 	private wsConnectionEstablished(conn: WS.connection): void {
-		log.debug("WS connection established to Banano node");
+		this.log.debug("WS connection established to Banano node");
 		conn.addListener("error", this.wsCoonnectionError.bind(this));
 		conn.addListener("close", this.wsConnectionClosed.bind(this));
 		conn.addListener("message", this.wsMessageReceived.bind(this));
@@ -80,7 +83,7 @@ class Banano {
 	}
 
 	private static wsConnectionFailed(err): void {
-		log.error(
+		console.error(
 			`Couldn't connect to Banano WebSocket API at ${config.BananoWebSocketsAPI}`,
 			err
 		);
@@ -88,20 +91,20 @@ class Banano {
 	}
 
 	private wsCoonnectionError(err): void {
-		log.error("Unexpected WS error", err);
-		log.info("Reconnecting to WS API...");
+		this.log.error("Unexpected WS error", err);
+		this.log.info("Reconnecting to WS API...");
 		this.ws.connect(`ws://${config.BananoWebSocketsAPI}`);
 	}
 
 	private wsConnectionClosed(code: number, desc: string): void {
-		log.info(`WS connection closed: code=${code}, desc=${desc}`);
-		log.info("Reconnecting to WS API...");
+		this.log.info(`WS connection closed: code=${code}, desc=${desc}`);
+		this.log.info("Reconnecting to WS API...");
 		this.ws.connect(`ws://${config.BananoWebSocketsAPI}`);
 	}
 
 	static async fetchWalletHistory(wallet: string): Promise<void> {
 		const history = await banano.getAccountHistory(wallet, -1);
-		log.trace(history);
+		console.trace(history);
 	}
 }
 

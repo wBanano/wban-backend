@@ -1,10 +1,12 @@
 import express from "express";
 import cors from "cors";
 import { Logger } from "tslog";
-import { Service } from "./Service";
-import { UsersDepositsStorage } from "./UsersDepositsStorage";
-import { RedisUsersDepositsStorage } from "./RedisUsersDepositsStorage";
-import { UsersDepositsService } from "./UsersDepositsService";
+import { BigNumber } from "ethers";
+import { Service } from "./services/Service";
+import { UsersDepositsStorage } from "./storage/UsersDepositsStorage";
+import { RedisUsersDepositsStorage } from "./storage/RedisUsersDepositsStorage";
+import { UsersDepositsService } from "./services/UsersDepositsService";
+import SwapRequest from "./models/requests/SwapRequest";
 
 const app = express();
 const PORT = 3000;
@@ -29,7 +31,6 @@ app.get("/health", (req, res) => {
 app.get("/deposits/:ban_wallet", async (req, res) => {
 	const banWallet = req.params.ban_wallet;
 	const availableBalance = await svc.getUserAvailableBalance(banWallet);
-	log.info(`User ${banWallet} has an available balance of ${availableBalance}`);
 	res.send({
 		deposits: availableBalance,
 	});
@@ -37,10 +38,11 @@ app.get("/deposits/:ban_wallet", async (req, res) => {
 
 app.post("/swap", async (req, res) => {
 	// TODO: make sure all required parameters are sent!
-	const banAmount: number = req.body.amount as number;
-	const banWallet: string = req.body.ban;
-	const bscWallet: string = req.body.bsc;
-	const signature: string = req.body.sig;
+	const swapRequest: SwapRequest = req.body as SwapRequest;
+	const banAmount: string = swapRequest.amount;
+	const banWallet: string = swapRequest.ban;
+	const bscWallet: string = swapRequest.bsc;
+	const signature: string = swapRequest.sig;
 
 	log.debug(
 		`banAmount=${banAmount}, banWallet=${banWallet}, bscWallet=${bscWallet}, signature=${signature}`

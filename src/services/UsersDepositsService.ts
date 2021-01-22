@@ -1,6 +1,6 @@
 import { Logger } from "tslog";
-import BigNumber from "@bananocoin/bananojs";
-import { UsersDepositsStorage } from "./UsersDepositsStorage";
+import { ethers, BigNumber } from "ethers";
+import { UsersDepositsStorage } from "../storage/UsersDepositsStorage";
 
 class UsersDepositsService {
 	private usersDepositsStorage: UsersDepositsStorage;
@@ -11,8 +11,16 @@ class UsersDepositsService {
 		this.usersDepositsStorage = usersDepositsStorage;
 	}
 
-	async getUserAvailableBalance(from: string): Promise<number> {
-		return this.usersDepositsStorage.getUserAvailableBalance(from);
+	async getUserAvailableBalance(from: string): Promise<BigNumber> {
+		const balance = await this.usersDepositsStorage.getUserAvailableBalance(
+			from
+		);
+		this.log.info(
+			`User ${from} has an available balance of ${ethers.utils.formatUnits(
+				balance
+			)} BAN`
+		);
+		return balance;
 	}
 
 	async storeUserDeposit(
@@ -31,7 +39,7 @@ class UsersDepositsService {
 		this.usersDepositsStorage.storeUserDeposit(from, amount, hash);
 	}
 
-	async storeUserSwap(from: string, amount: number): Promise<void> {
+	async storeUserSwap(from: string, amount: BigNumber): Promise<void> {
 		return this.usersDepositsStorage.storeUserSwap(from, amount);
 	}
 }

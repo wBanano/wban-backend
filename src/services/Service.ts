@@ -1,7 +1,7 @@
 import { Logger } from "tslog";
-import { ethers } from "ethers";
-import { Banano } from "./Banano";
-import config from "./config";
+import { BigNumber, ethers } from "ethers";
+import { Banano } from "../Banano";
+import config from "../config";
 import { UsersDepositsService } from "./UsersDepositsService";
 
 class Service {
@@ -19,31 +19,36 @@ class Service {
 		this.usersDepositsService = usersDepositsService;
 	}
 
-	async start(): Promise<void> {
-		await this.banano.subscribeToBananoNotificationsForWallet();
+	start(): void {
+		this.banano.subscribeToBananoNotificationsForWallet();
 	}
 
-	async getUserAvailableBalance(from: string): Promise<number> {
+	async getUserAvailableBalance(from: string): Promise<BigNumber> {
 		return this.usersDepositsService.getUserAvailableBalance(from);
 	}
 
 	async swap(
 		from: string,
-		amount: number,
+		amountStr: string,
 		bscWallet: string,
 		signature: string
 	): Promise<boolean> {
 		// verify signature
-		if (!this.checkSignature(from, amount, bscWallet, signature)) {
+		if (!this.checkSignature(from, amountStr, bscWallet, signature)) {
 			return false;
 		}
 		// TODO: store signature?
 
+		const amount: BigNumber = ethers.utils.parseEther(amountStr);
+
 		// TODO: check if deposits are greater than or equal to amount to swap
-		const availableBalance: number = await this.usersDepositsService.getUserAvailableBalance(
+		const availableBalance: BigNumber = await this.usersDepositsService.getUserAvailableBalance(
 			from
 		);
-		if (availableBalance < amount) {
+		if (amount.lte(availableBalance)) {
+			this.log.warn(
+				`User ${from} has not deposited enough BAN for a swap of ${amount}. Deposited balance is: ${availableBalance}`
+			);
 			return false;
 		}
 
@@ -55,7 +60,7 @@ class Service {
 
 	checkSignature(
 		from: string,
-		amount: number,
+		amount: string,
 		bscWallet: string,
 		signature: string
 	): boolean {
@@ -67,7 +72,7 @@ class Service {
 		const sanitizedAddress = ethers.utils.getAddress(bscWallet);
 		if (author !== sanitizedAddress) {
 			this.log.warn(
-				`Signature is invalid. ${author} sent a signed message pretending to be from ${sanitizedAddress}`
+				`Signature is invalid. ${sanitizedAddress} sent a signed message pretending to be from ${author}`
 			);
 		}
 		return author === sanitizedAddress;
