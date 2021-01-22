@@ -11,6 +11,7 @@ const PORT = 3000;
 const log: Logger = new Logger();
 
 app.use(cors());
+app.use(express.json());
 
 const usersDepositsStorage: UsersDepositsStorage = new RedisUsersDepositsStorage();
 const usersDepositsService: UsersDepositsService = new UsersDepositsService(
@@ -28,23 +29,24 @@ app.get("/health", (req, res) => {
 app.get("/deposits/:ban_wallet", async (req, res) => {
 	const banWallet = req.params.ban_wallet;
 	const availableBalance = await svc.getUserAvailableBalance(banWallet);
-	log.info(
-		`User ${banWallet} has an available balance of ${availableBalance} BAN`
-	);
+	log.info(`User ${banWallet} has an available balance of ${availableBalance}`);
 	res.send({
 		deposits: availableBalance,
 	});
-	// res.send(`Available balance: ${availableBalance} BAN`);
 });
 
-app.get("/swap", async (req, res) => {
+app.post("/swap", async (req, res) => {
 	// TODO: make sure all required parameters are sent!
-	const banAmount: number = parseFloat(req.query.amount as string);
-	const banWallet: string = req.query.ban as string;
-	const bscWallet = req.query.bsc as string;
-	const signature = req.query.sig as string;
+	const banAmount: number = req.body.amount as number;
+	const banWallet: string = req.body.ban;
+	const bscWallet: string = req.body.bsc;
+	const signature: string = req.body.sig;
 
-	const result = await svc.swap(banWallet, banAmount, signature);
+	log.debug(
+		`banAmount=${banAmount}, banWallet=${banWallet}, bscWallet=${bscWallet}, signature=${signature}`
+	);
+
+	const result = await svc.swap(banWallet, banAmount, bscWallet, signature);
 	if (!result) {
 		res.send(`Swap request for ${banAmount} is not possible.`);
 		return;
