@@ -1,7 +1,7 @@
 import { Logger } from "tslog";
 import Redis from "ioredis";
 import Redlock from "redlock";
-import { ethers, BigNumber } from "ethers";
+import { BigNumber } from "ethers";
 import { UsersDepositsStorage } from "./UsersDepositsStorage";
 import config from "../config";
 

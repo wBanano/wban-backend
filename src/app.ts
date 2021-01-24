@@ -23,9 +23,10 @@ const svc = new Service(usersDepositsService);
 svc.start();
 
 app.get("/health", (req, res) => {
-	res.send(
-		"TODO: check if connections to Banano node, BSC node and Redis node are okay!"
-	);
+	// TODO: check if connections to Banano node, BSC node and Redis node are okay!
+	res.send({
+		status: "OK",
+	});
 });
 
 app.get("/deposits/:ban_wallet", async (req, res) => {

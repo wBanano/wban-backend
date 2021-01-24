@@ -49,7 +49,12 @@ class Banano {
 		const amount = rawAmount.substring(0, rawAmount.length - 11);
 		const { hash } = notification.message;
 
-		// log.trace(`Received message ${JSON.stringify(notification)}`);
+		// filter transactions sent by the users deposits wallet
+		if (sender === this.usersDepositsWallet) {
+			return;
+		}
+
+		// this.log.trace(`Received message ${JSON.stringify(notification)}`);
 		this.log.info(
 			`User ${sender} deposited ${amount} BAN in transaction ${hash}`
 		);
@@ -60,6 +65,7 @@ class Banano {
 				`BAN were deposited to another wallet than the users deposit wallet: ${receiver}`
 			);
 			this.log.error("Ignoring this deposit");
+			this.log.trace(`Received message ${JSON.stringify(notification)}`);
 		}
 		// record the user deposit
 		this.usersDepositsStorage.storeUserDeposit(sender, amount, hash);
