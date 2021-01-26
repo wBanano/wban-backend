@@ -1,11 +1,12 @@
 import { Logger } from "tslog";
 import { ethers, BigNumber } from "ethers";
+import config from "../config";
 import { UsersDepositsStorage } from "../storage/UsersDepositsStorage";
 
 class UsersDepositsService {
 	private usersDepositsStorage: UsersDepositsStorage;
 
-	private log: Logger = new Logger();
+	private log: Logger = config.Logger.getChildLogger();
 
 	constructor(usersDepositsStorage: UsersDepositsStorage) {
 		this.usersDepositsStorage = usersDepositsStorage;

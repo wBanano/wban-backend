@@ -1,6 +1,7 @@
 import chai from "chai";
 import * as sinon from "ts-sinon";
 import sinonChai from "sinon-chai";
+import { BigNumber } from "ethers";
 import { UsersDepositsService } from "../../src/services/UsersDepositsService";
 import { UsersDepositsStorage } from "../../src/storage/UsersDepositsStorage";
 
@@ -27,7 +28,7 @@ describe("Users Deposits Service", () => {
 
 	it("Checks if a user deposit transaction is not ingested twice in storage", async () => {
 		const address = "0xCAFEBABE";
-		const amount = 123;
+		const amount = BigNumber.from(123);
 		const hash = "<the-hash>";
 		// accept to ingest the transaction the first time
 		storage.containsTransaction.onCall(0).returns(Promise.resolve(true));

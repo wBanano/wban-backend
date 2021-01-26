@@ -10,7 +10,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 
 	private redlock: Redlock;
 
-	private log: Logger = new Logger();
+	private log: Logger = config.Logger.getChildLogger();
 
 	constructor() {
 		this.redis = new Redis({ host: config.RedisHost });

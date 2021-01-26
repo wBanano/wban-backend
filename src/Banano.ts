@@ -1,6 +1,10 @@
 import * as banano from "@bananocoin/bananojs";
 import * as WS from "websocket";
 import { Logger } from "tslog";
+import cron from "node-cron";
+import { ethers, BigNumber } from "ethers";
+import { Mutex } from "async-mutex";
+import { timeStamp } from "console";
 import { UsersDepositsService } from "./services/UsersDepositsService";
 import config from "./config";
 
@@ -9,25 +13,48 @@ const BANANO_API_URL = "https://kaliumapi.appditto.com/api";
 class Banano {
 	private usersDepositsWallet: string;
 
+	private seed: string;
+
+	private seedIdx: number;
+
+	private representative: string;
+
 	private usersDepositsStorage: UsersDepositsService;
 
 	private ws: WS.client;
 
-	private log: Logger = new Logger();
+	private mutex: Mutex;
+
+	private log: Logger = config.Logger.getChildLogger();
 
 	constructor(
 		usersDepositsWallet: string,
+		seed: string,
+		seedIdx: number,
+		representative: string,
 		usersDepositsService: UsersDepositsService
 	) {
 		this.usersDepositsWallet = usersDepositsWallet;
 		this.usersDepositsStorage = usersDepositsService;
+		this.seed = seed;
+		this.seedIdx = seedIdx;
+		this.representative = representative;
+		this.mutex = new Mutex();
 
 		banano.setBananodeApiUrl(BANANO_API_URL); // TODO: try to connect to local node instead!
-		// TODO: periodically run this method!
-		// Banano.fetchWalletHistory(usersDepositsWallet);
+		// check every 5 miinutes if transactions were missed from the WebSockets API
+		if (config.BananoPendingTransactionsThreadEnabled === true) {
+			cron.schedule("*/5 * * * *", () => {
+				this.processPendingTransactions(usersDepositsWallet);
+			});
+		} else {
+			this.log.warn(
+				"Ignoring checks of pending transactions. Only do this for running tests!"
+			);
+		}
 	}
 
-	subscribeToBananoNotificationsForWallet(): void {
+	async subscribeToBananoNotificationsForWallet(): Promise<void> {
 		this.log.info(
 			`Subscribing to wallet notifications for '${this.usersDepositsWallet}'...`
 		);
@@ -41,12 +68,14 @@ class Banano {
 		this.ws.connect(`ws://${config.BananoWebSocketsAPI}`);
 	}
 
-	private wsMessageReceived(msg: WS.IMessage): void {
+	private async wsMessageReceived(msg: WS.IMessage): Promise<void> {
 		const notification = JSON.parse(msg.utf8Data);
 		const sender = notification.message.account;
 		const receiver = notification.message.block.link_as_account;
 		const rawAmount = notification.message.amount;
-		const amount = rawAmount.substring(0, rawAmount.length - 11);
+		const amount: BigNumber = BigNumber.from(
+			rawAmount.substring(0, rawAmount.length - 11)
+		);
 		const { hash } = notification.message;
 
 		// filter transactions sent by the users deposits wallet
@@ -68,7 +97,7 @@ class Banano {
 			this.log.trace(`Received message ${JSON.stringify(notification)}`);
 		}
 		// record the user deposit
-		this.usersDepositsStorage.storeUserDeposit(sender, amount, hash);
+		await this.processUserDeposit(sender, amount, hash);
 	}
 
 	private wsConnectionEstablished(conn: WS.connection): void {
@@ -108,9 +137,59 @@ class Banano {
 		this.ws.connect(`ws://${config.BananoWebSocketsAPI}`);
 	}
 
-	static async fetchWalletHistory(wallet: string): Promise<void> {
-		const history = await banano.getAccountHistory(wallet, -1);
-		console.trace(history);
+	async processPendingTransactions(wallet: string): Promise<void> {
+		this.log.info(
+			"Searching for pending transactions that were missed from the WS API"
+		);
+		const accountsPending = await banano.getAccountsPending(
+			[wallet], // monitor users deposits wallet
+			-1, // ask for all pending transactions
+			true // ask for wallet who sent the transaction
+		);
+		if (accountsPending.blocks && accountsPending.blocks[wallet]) {
+			const walletPendingTransactions = accountsPending.blocks[wallet];
+			const transactionsHashes = [...Object.keys(walletPendingTransactions)];
+			// eslint-disable-next-line no-restricted-syntax
+			for (const hash of transactionsHashes) {
+				const transaction = walletPendingTransactions[hash];
+				const { amount, source } = transaction;
+				const banAmount: BigNumber = BigNumber.from(
+					amount.substring(0, amount.length - 11)
+				);
+				this.log.debug(
+					`Got missed transaction of ${ethers.utils.formatEther(
+						banAmount
+					)} BAN from ${source} in transaction "${hash}"`
+				);
+				// record the user deposit
+				// eslint-disable-next-line no-await-in-loop
+				await this.processUserDeposit(source, banAmount, hash);
+			}
+		} else {
+			this.log.debug("No pending transactions...");
+		}
+	}
+
+	private async processUserDeposit(
+		sender: string,
+		amount: BigNumber,
+		hash: string
+	): Promise<void> {
+		await this.mutex.runExclusive(async () => {
+			// record the user deposit
+			this.usersDepositsStorage.storeUserDeposit(sender, amount, hash);
+			// create receive transaction
+			try {
+				await banano.receiveBananoDepositsForSeed(
+					this.seed,
+					this.seedIdx,
+					this.representative,
+					hash
+				);
+			} catch (err) {
+				this.log.error("Unexpected error", err);
+			}
+		});
 	}
 }
 

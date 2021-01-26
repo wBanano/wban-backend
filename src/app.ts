@@ -1,16 +1,16 @@
 import express from "express";
 import cors from "cors";
 import { Logger } from "tslog";
-import { BigNumber } from "ethers";
 import { Service } from "./services/Service";
 import { UsersDepositsStorage } from "./storage/UsersDepositsStorage";
 import { RedisUsersDepositsStorage } from "./storage/RedisUsersDepositsStorage";
 import { UsersDepositsService } from "./services/UsersDepositsService";
 import SwapRequest from "./models/requests/SwapRequest";
+import config from "./config";
 
 const app = express();
 const PORT = 3000;
-const log: Logger = new Logger();
+const log: Logger = config.Logger.getChildLogger();
 
 app.use(cors());
 app.use(express.json());

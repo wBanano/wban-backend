@@ -1,6 +1,7 @@
 import chai from "chai";
 import * as sinon from "ts-sinon";
 import sinonChai from "sinon-chai";
+import config from "../../src/config";
 import { UsersDepositsService } from "../../src/services/UsersDepositsService";
 import { Service } from "../../src/services/Service";
 

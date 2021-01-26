@@ -9,11 +9,14 @@ class Service {
 
 	private usersDepositsService: UsersDepositsService;
 
-	private log: Logger = new Logger();
+	private log: Logger = config.Logger.getChildLogger();
 
 	constructor(usersDepositsService: UsersDepositsService) {
 		this.banano = new Banano(
 			config.BananoUsersDepositsWallet,
+			config.BananoSeed,
+			config.BananoSeedIdx,
+			config.BananoRepresentative,
 			usersDepositsService
 		);
 		this.usersDepositsService = usersDepositsService;
