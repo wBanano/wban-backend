@@ -24,6 +24,28 @@ class UsersDepositsService {
 		return balance;
 	}
 
+	async hasPendingClaim(banAddress: string): Promise<boolean> {
+		return this.usersDepositsStorage.hasPendingClaim(banAddress);
+	}
+
+	async storePendingClaim(
+		banAddress: string,
+		bscAddress: string
+	): Promise<boolean> {
+		if (await this.usersDepositsStorage.hasPendingClaim(banAddress)) {
+			return false;
+		}
+		return this.usersDepositsStorage.storePendingClaim(banAddress, bscAddress);
+	}
+
+	async hasClaim(banAddress: string): Promise<boolean> {
+		return this.usersDepositsStorage.hasClaim(banAddress);
+	}
+
+	async confirmClaim(banAddress: string): Promise<boolean> {
+		return this.usersDepositsStorage.storeClaim(banAddress);
+	}
+
 	async storeUserDeposit(
 		from: string,
 		amount: BigNumber,

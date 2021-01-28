@@ -5,6 +5,7 @@ import { Service } from "./services/Service";
 import { UsersDepositsStorage } from "./storage/UsersDepositsStorage";
 import { RedisUsersDepositsStorage } from "./storage/RedisUsersDepositsStorage";
 import { UsersDepositsService } from "./services/UsersDepositsService";
+import ClaimRequest from "./models/requests/ClaimRequest";
 import SwapRequest from "./models/requests/SwapRequest";
 import config from "./config";
 
@@ -29,12 +30,49 @@ app.get("/health", (req, res) => {
 	});
 });
 
-app.get("/deposits/:ban_wallet", async (req, res) => {
-	const banWallet = req.params.ban_wallet;
-	const availableBalance = await svc.getUserAvailableBalance(banWallet);
+app.get("/deposits/ban/wallet", async (req, res) => {
 	res.send({
-		deposits: availableBalance,
+		address: config.BananoUsersDepositsWallet,
 	});
+});
+
+app.get("/deposits/ban/:ban_wallet", async (req, res) => {
+	const banWallet = req.params.ban_wallet;
+
+	res.set({
+		"Cache-Control": "no-cache",
+		"Content-Type": "text/event-stream",
+		Connection: "keep-alive",
+	});
+	res.flushHeaders();
+
+	res.write("retry: 10000\n\n");
+
+	while (true) {
+		// eslint-disable-next-line no-await-in-loop
+		await new Promise((resolve) => setTimeout(resolve, 5000));
+		// eslint-disable-next-line no-await-in-loop
+		res.write(`data: ${await svc.getUserAvailableBalance(banWallet)}\n\n`);
+	}
+});
+
+app.post("/claim", async (req, res) => {
+	// TODO: make sure all required parameters are sent!
+	const claimRequest: ClaimRequest = req.body as ClaimRequest;
+	const { banAddress, bscAddress, sig } = claimRequest;
+	log.info(
+		`Check claim for ${banAddress} and ${bscAddress} with signature ${sig}`
+	);
+	const result = await svc.claim(banAddress, bscAddress, sig);
+	if (result) {
+		res.send({
+			status: "OK",
+		});
+	} else {
+		res.status(409).send({
+			message: "Invalid claim.",
+		});
+	}
 });
 
 app.post("/swap", async (req, res) => {
@@ -51,7 +89,7 @@ app.post("/swap", async (req, res) => {
 
 	const result = await svc.swap(banWallet, banAmount, bscWallet, signature);
 	if (!result) {
-		res.send(`Swap request for ${banAmount} is not possible.`);
+		res.status(409).send(`Swap request for ${banAmount} BAN is not possible.`);
 		return;
 	}
 

@@ -30,6 +30,24 @@ class Service {
 		return this.usersDepositsService.getUserAvailableBalance(from);
 	}
 
+	async claim(
+		banWallet: string,
+		bscWallet: string,
+		signature: string
+	): Promise<boolean> {
+		// verify signature
+		if (
+			!this.checkSignature(
+				bscWallet,
+				signature,
+				`I hereby claim that the BAN address "${banWallet}" is mine`
+			)
+		) {
+			return false;
+		}
+		return this.usersDepositsService.storePendingClaim(banWallet, bscWallet);
+	}
+
 	async swap(
 		from: string,
 		amountStr: string,
@@ -37,7 +55,13 @@ class Service {
 		signature: string
 	): Promise<boolean> {
 		// verify signature
-		if (!this.checkSignature(from, amountStr, bscWallet, signature)) {
+		if (
+			!this.checkSignature(
+				bscWallet,
+				signature,
+				`Swap ${amountStr} BAN for wBAN with BAN I deposited from my wallet "${from}"`
+			)
+		) {
 			return false;
 		}
 		// TODO: store signature?
@@ -62,16 +86,12 @@ class Service {
 	}
 
 	checkSignature(
-		from: string,
-		amount: string,
 		bscWallet: string,
-		signature: string
+		signature: string,
+		expected: string
 	): boolean {
 		this.log.debug(`Checking signature '${signature}'`);
-		const author = ethers.utils.verifyMessage(
-			`Swap ${amount} BAN for wBAN with BAN I deposited from my wallet "${from}"`,
-			signature
-		);
+		const author = ethers.utils.verifyMessage(expected, signature);
 		const sanitizedAddress = ethers.utils.getAddress(bscWallet);
 		if (author !== sanitizedAddress) {
 			this.log.warn(

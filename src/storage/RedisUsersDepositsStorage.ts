@@ -35,6 +35,57 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		return BigNumber.from(rawAmount);
 	}
 
+	async hasPendingClaim(banAddress: string): Promise<boolean> {
+		this.log.info(
+			`Checking if there is already a pending claim for ${banAddress}...`
+		);
+		const pendingClaims = await this.redis.keys(
+			`claims:pending:${banAddress}:*`
+		);
+		const exists = pendingClaims.length > 0;
+		this.log.debug(exists);
+		return exists;
+	}
+
+	async storePendingClaim(
+		banAddress: string,
+		bscAddress: string
+	): Promise<boolean> {
+		try {
+			const key = `claims:pending:${banAddress}:${bscAddress}`;
+			this.log.debug(`Key is ${key}`);
+			await this.redis
+				.multi()
+				.set(key, "1")
+				.expire(key, 5 * 60) // 5 minutes
+				.exec();
+			this.log.info(`Stored pending claim for ${banAddress} and ${bscAddress}`);
+			return true;
+		} catch (err) {
+			this.log.error(err);
+			return false;
+		}
+	}
+
+	async hasClaim(banAddress: string): Promise<boolean> {
+		this.log.info(`Checking if there is a claim for ${banAddress}...`);
+		const pendingClaims = await this.redis.keys(`claims:${banAddress}:*`);
+		const exists = pendingClaims.length > 0;
+		this.log.debug(exists);
+		return exists;
+	}
+
+	async storeClaim(banAddress: string): Promise<boolean> {
+		const pendingClaims = await this.redis.keys(
+			`claims:pending:${banAddress}:*`
+		);
+		const key = pendingClaims[0].replace(":pending", "");
+		// claims:pending:ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o:0xec410e9f2756c30be4682a7e29918082adc12b55
+		await this.redis.set(key, 1);
+		this.log.info(`Stored claim for ${banAddress} and ${key}`);
+		return true;
+	}
+
 	async storeUserDeposit(
 		from: string,
 		amount: BigNumber,

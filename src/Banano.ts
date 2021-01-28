@@ -4,7 +4,6 @@ import { Logger } from "tslog";
 import cron from "node-cron";
 import { ethers, BigNumber } from "ethers";
 import { Mutex } from "async-mutex";
-import { timeStamp } from "console";
 import { UsersDepositsService } from "./services/UsersDepositsService";
 import config from "./config";
 
@@ -176,20 +175,50 @@ class Banano {
 		hash: string
 	): Promise<void> {
 		await this.mutex.runExclusive(async () => {
-			// record the user deposit
-			this.usersDepositsStorage.storeUserDeposit(sender, amount, hash);
-			// create receive transaction
-			try {
-				await banano.receiveBananoDepositsForSeed(
-					this.seed,
-					this.seedIdx,
-					this.representative,
-					hash
+			// check if a pending claim is available
+			if (await this.usersDepositsStorage.hasPendingClaim(sender)) {
+				// confirm it
+				await this.usersDepositsStorage.confirmClaim(sender);
+			}
+
+			// check if there is a valid claim
+			if (!(await this.usersDepositsStorage.hasClaim(sender))) {
+				const formattedAmount = ethers.utils.formatEther(amount);
+				this.log.error(
+					`No claim were made for "${sender}". Sending back the ${formattedAmount} BAN deposited`
 				);
-			} catch (err) {
-				this.log.error("Unexpected error", err);
+				await this.receiveTransaction(hash);
+				// send back the BAN!
+				try {
+					await banano.sendBananoWithdrawalFromSeed(
+						this.seed,
+						this.seedIdx,
+						sender,
+						formattedAmount
+					);
+				} catch (err) {
+					this.log.error("Unexpected error", err);
+				}
+			} else {
+				// record the user deposit
+				this.usersDepositsStorage.storeUserDeposit(sender, amount, hash);
+				await this.receiveTransaction(hash);
 			}
 		});
+	}
+
+	private async receiveTransaction(hash: string) {
+		// create receive transaction
+		try {
+			await banano.receiveBananoDepositsForSeed(
+				this.seed,
+				this.seedIdx,
+				this.representative,
+				hash
+			);
+		} catch (err) {
+			this.log.error("Unexpected error", err);
+		}
 	}
 }
 
