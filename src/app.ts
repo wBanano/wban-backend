@@ -78,7 +78,7 @@ app.post("/claim", async (req, res) => {
 app.post("/swap", async (req, res) => {
 	// TODO: make sure all required parameters are sent!
 	const swapRequest: SwapRequest = req.body as SwapRequest;
-	const banAmount: string = swapRequest.amount;
+	const banAmount: number = swapRequest.amount;
 	const banWallet: string = swapRequest.ban;
 	const bscWallet: string = swapRequest.bsc;
 	const signature: string = swapRequest.sig;

@@ -32,6 +32,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 
 	async getUserAvailableBalance(from: string): Promise<BigNumber> {
 		const rawAmount: string = await this.redis.get(`deposits:${from}`);
+		console.log(rawAmount);
 		return BigNumber.from(rawAmount);
 	}
 
@@ -123,15 +124,39 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		});
 	}
 
-	async storeUserSwap(from: string, amount: BigNumber): Promise<void> {
+	async storeUserSwap(
+		from: string,
+		amount: BigNumber,
+		hash: string
+	): Promise<void> {
 		this.log.info(`TODO: Storing swap of ${amount} BAN for user ${from}`);
-		/*
-		await this.redis
-			.multi()
-			.incrbyfloat(from, -1 * amount)
-			.lpush(`swaps:${from}`, amount)
-			.exec();
-			*/
+		this.redlock.lock(`locks:deposits:${from}`, 1_000).then(async (lock) => {
+			let rawBalance: string | null;
+			try {
+				rawBalance = await this.redis.get(`deposits:${from}`);
+				let balance: BigNumber;
+				if (rawBalance) {
+					balance = BigNumber.from(rawBalance);
+				} else {
+					balance = BigNumber.from(0);
+				}
+				balance = balance.sub(amount);
+
+				await this.redis
+					.multi()
+					.set(`deposits:${from}`, balance.toString())
+					.sadd(`swaps:${from}`, hash)
+					.exec();
+				this.log.info(
+					`Stored user swap from: ${from}, amount: ${amount} BAN, hash: ${hash}`
+				);
+			} catch (err) {
+				this.log.error(err);
+			}
+
+			// unlock resource when done
+			return lock.unlock().catch((err) => this.log.error(err));
+		});
 	}
 
 	async containsTransaction(from: string, hash: string): Promise<boolean> {

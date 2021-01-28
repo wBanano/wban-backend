@@ -3,9 +3,12 @@ import { BigNumber, ethers } from "ethers";
 import { Banano } from "../Banano";
 import config from "../config";
 import { UsersDepositsService } from "./UsersDepositsService";
+import { BSC } from "../BSC";
 
 class Service {
 	private banano: Banano;
+
+	private bsc: BSC;
 
 	private usersDepositsService: UsersDepositsService;
 
@@ -19,6 +22,7 @@ class Service {
 			config.BananoRepresentative,
 			usersDepositsService
 		);
+		this.bsc = new BSC();
 		this.usersDepositsService = usersDepositsService;
 	}
 
@@ -50,7 +54,7 @@ class Service {
 
 	async swap(
 		from: string,
-		amountStr: string,
+		amountStr: number,
 		bscWallet: string,
 		signature: string
 	): Promise<boolean> {
@@ -66,22 +70,23 @@ class Service {
 		}
 		// TODO: store signature?
 
-		const amount: BigNumber = ethers.utils.parseEther(amountStr);
+		const amount: BigNumber = ethers.utils.parseEther(amountStr.toString());
 
 		// TODO: check if deposits are greater than or equal to amount to swap
 		const availableBalance: BigNumber = await this.usersDepositsService.getUserAvailableBalance(
 			from
 		);
-		if (amount.lte(availableBalance)) {
+		if (!availableBalance.gte(amount)) {
 			this.log.warn(
 				`User ${from} has not deposited enough BAN for a swap of ${amount}. Deposited balance is: ${availableBalance}`
 			);
 			return false;
 		}
 
+		// mint wBAN tokens
+		const hash = await this.bsc.mintTo(bscWallet, amount);
 		// decrease user deposits
-		await this.usersDepositsService.storeUserSwap(from, amount);
-		// TODO: mint wBAN tokens
+		await this.usersDepositsService.storeUserSwap(from, amount, hash);
 		return true;
 	}
 

@@ -28,6 +28,14 @@ export default {
 	BananoWebSocketsAPI: process.env.BANANO_WS_API ?? "",
 	BananoPendingTransactionsThreadEnabled:
 		process.env.BANANO_PENDING_TXN_THREAD ?? true,
+
+	BinanceSmartChainJsonRpc: process.env.BSC_JSON_RPC_URL ?? "",
+	BinanceSmartChainNetworkName: process.env.BSC_NETWORK_NAME ?? "",
+	BinanceSmartChainNetworkChainId:
+		Number.parseInt(process.env.BSC_NETWORK_CHAIN_ID, 10) ?? 0,
+	WBANContractAddress: process.env.WBAN_CONTRACT_ADDRESS ?? "",
+
 	RedisHost: process.env.REDIS_HOST ?? "",
+
 	Logger: log,
 };

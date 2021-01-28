@@ -1,5 +1,5 @@
 type SwapRequest = {
-	amount: string;
+	amount: number;
 	ban: string;
 	bsc: string;
 	sig: string;

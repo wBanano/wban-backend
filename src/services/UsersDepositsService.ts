@@ -62,8 +62,12 @@ class UsersDepositsService {
 		this.usersDepositsStorage.storeUserDeposit(from, amount, hash);
 	}
 
-	async storeUserSwap(from: string, amount: BigNumber): Promise<void> {
-		return this.usersDepositsStorage.storeUserSwap(from, amount);
+	async storeUserSwap(
+		from: string,
+		amount: BigNumber,
+		hash: string
+	): Promise<void> {
+		return this.usersDepositsStorage.storeUserSwap(from, amount, hash);
 	}
 }
 
