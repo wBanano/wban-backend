@@ -7,11 +7,14 @@ switch (process.env.NODE_ENV) {
 	case "test":
 		path = ".env.test";
 		break;
-	case "production":
-		path = ".env.production";
+	case "testnet":
+		path = ".env.testnet";
+		break;
+	case "mainnet":
+		path = ".env.mainnet";
 		break;
 	default:
-		path = ".env.development";
+		path = ".env.local";
 }
 dotenv.config({ path });
 
@@ -33,6 +36,7 @@ export default {
 	BinanceSmartChainNetworkName: process.env.BSC_NETWORK_NAME ?? "",
 	BinanceSmartChainNetworkChainId:
 		Number.parseInt(process.env.BSC_NETWORK_CHAIN_ID, 10) ?? 0,
+	BinanceSmartChainWalletMnemonic: process.env.BSC_WALLET_MMENOMIC ?? "",
 	WBANContractAddress: process.env.WBAN_CONTRACT_ADDRESS ?? "",
 
 	RedisHost: process.env.REDIS_HOST ?? "",

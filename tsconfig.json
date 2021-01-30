@@ -1,15 +1,16 @@
 {
 	"compilerOptions": {
+		"target": "es2018",
 		"module": "commonjs",
 		"esModuleInterop": true,
-		"target": "es2019",
 		"moduleResolution": "node",
 		"sourceMap": true,
 		"outDir": "dist",
 		"paths": {
-			"@/*": ["src/*"],
-			"@artifacts/*": ["../artifacts/*"]
+			"@/*": ["./src/*"]
 		}
 	},
-	"lib": ["es2015"]
+	"lib": ["es2018"],
+	"include": ["./src/**.ts"],
+	"exclude": ["node_modules", "**/*.spec.ts"]
 }

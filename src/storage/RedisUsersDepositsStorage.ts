@@ -32,7 +32,9 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 
 	async getUserAvailableBalance(from: string): Promise<BigNumber> {
 		const rawAmount: string = await this.redis.get(`deposits:${from}`);
-		console.log(rawAmount);
+		if (rawAmount === null) {
+			return BigNumber.from(0);
+		}
 		return BigNumber.from(rawAmount);
 	}
 

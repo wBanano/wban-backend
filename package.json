@@ -50,6 +50,7 @@
 		"node-cron": "^2.0.3",
 		"redlock": "^4.2.0",
 		"tslog": "^3.0.5",
+		"wban-smart-contract": "0.1.8",
 		"websocket": "^1.0.33"
 	},
 	"husky": {

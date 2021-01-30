@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Application, Request, Response } from "express";
 import cors from "cors";
 import { Logger } from "tslog";
 import { Service } from "./services/Service";
@@ -9,7 +9,7 @@ import ClaimRequest from "./models/requests/ClaimRequest";
 import SwapRequest from "./models/requests/SwapRequest";
 import config from "./config";
 
-const app = express();
+const app: Application = express();
 const PORT = 3000;
 const log: Logger = config.Logger.getChildLogger();
 
@@ -23,20 +23,20 @@ const usersDepositsService: UsersDepositsService = new UsersDepositsService(
 const svc = new Service(usersDepositsService);
 svc.start();
 
-app.get("/health", (req, res) => {
+app.get("/health", (req: Request, res: Response) => {
 	// TODO: check if connections to Banano node, BSC node and Redis node are okay!
 	res.send({
 		status: "OK",
 	});
 });
 
-app.get("/deposits/ban/wallet", async (req, res) => {
+app.get("/deposits/ban/wallet", async (req: Request, res: Response) => {
 	res.send({
 		address: config.BananoUsersDepositsWallet,
 	});
 });
 
-app.get("/deposits/ban/:ban_wallet", async (req, res) => {
+app.get("/deposits/ban/:ban_wallet", async (req: Request, res: Response) => {
 	const banWallet = req.params.ban_wallet;
 
 	res.set({
@@ -56,7 +56,7 @@ app.get("/deposits/ban/:ban_wallet", async (req, res) => {
 	}
 });
 
-app.post("/claim", async (req, res) => {
+app.post("/claim", async (req: Request, res: Response) => {
 	// TODO: make sure all required parameters are sent!
 	const claimRequest: ClaimRequest = req.body as ClaimRequest;
 	const { banAddress, bscAddress, sig } = claimRequest;
@@ -75,7 +75,7 @@ app.post("/claim", async (req, res) => {
 	}
 });
 
-app.post("/swap", async (req, res) => {
+app.post("/swap", async (req: Request, res: Response) => {
 	// TODO: make sure all required parameters are sent!
 	const swapRequest: SwapRequest = req.body as SwapRequest;
 	const banAmount: number = swapRequest.amount;

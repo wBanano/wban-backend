@@ -1,5 +1,7 @@
 dist
 node_modules
-.env.development
-.env.production
+.env.local
+.env.testnet
+.env.mainnet
 .eslintcache
+run.sh

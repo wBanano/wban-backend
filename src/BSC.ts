@@ -1,35 +1,47 @@
-import { ethers, BigNumber, ContractTransaction } from "ethers";
+import { ethers, BigNumber, ContractTransaction, Wallet } from "ethers";
 import { Logger } from "tslog";
 import {
 	WBANToken,
 	// eslint-disable-next-line camelcase
 	WBANToken__factory,
-} from "../../wban-dApp/artifacts/typechain";
-// import { WBANToken, WBANToken__factory } from '@artifacts/typechain'
+} from "wban-smart-contract";
 import config from "./config";
 
 class BSC {
 	private wBAN: WBANToken;
+
+	private wallet: Wallet;
 
 	private provider: ethers.providers.JsonRpcProvider;
 
 	private log: Logger = config.Logger.getChildLogger();
 
 	constructor() {
-		this.provider = new ethers.providers.JsonRpcProvider(
-			config.BinanceSmartChainJsonRpc,
-			{
-				name: config.BinanceSmartChainNetworkName,
-				chainId: config.BinanceSmartChainNetworkChainId,
-			}
-		);
-		this.wBAN = WBANToken__factory.connect(
-			config.WBANContractAddress,
-			this.provider.getSigner()
-		);
-		this.wBAN
-			.owner()
-			.then((owner) => this.log.debug(`Contract owner: ${owner}`));
+		try {
+			this.provider = new ethers.providers.JsonRpcProvider(
+				config.BinanceSmartChainJsonRpc,
+				{
+					name: config.BinanceSmartChainNetworkName,
+					chainId: config.BinanceSmartChainNetworkChainId,
+				}
+			);
+			this.wallet = Wallet.fromMnemonic(
+				config.BinanceSmartChainWalletMnemonic
+			).connect(this.provider);
+			this.wBAN = WBANToken__factory.connect(
+				config.WBANContractAddress,
+				this.wallet
+			);
+			this.wBAN
+				.owner()
+				.then((owner) => this.log.debug(`Contract owner: ${owner}`));
+		} catch (err) {
+			this.log.error(
+				"Couldn't properly initialize connection to Binance Smart Chain",
+				err
+			);
+			throw err;
+		}
 	}
 
 	async mintTo(address: string, amount: BigNumber): Promise<string> {
