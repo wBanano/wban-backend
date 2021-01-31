@@ -48,7 +48,12 @@ app.get("/deposits/ban/:ban_wallet", async (req: Request, res: Response) => {
 
 	res.write("retry: 10000\n\n");
 
-	while (true) {
+	let connected = true;
+	req.on("close", () => {
+		connected = false;
+	});
+
+	while (connected) {
 		// eslint-disable-next-line no-await-in-loop
 		await new Promise((resolve) => setTimeout(resolve, 5000));
 		// eslint-disable-next-line no-await-in-loop

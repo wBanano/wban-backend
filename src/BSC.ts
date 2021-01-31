@@ -49,20 +49,13 @@ class BSC {
 		const txn: ContractTransaction = await this.wBAN.mintTo(
 			address,
 			amount,
-			200_000
+			61_000,
+			{
+				gasLimit: 61_000,
+				gasPrice: "20000000000", // 20 Gwei
+			}
 		);
 		return txn.hash;
-		/*
-		const contract: WBANToken | null = contracts.wbanContract
-		if (contract && this.mintToAddress) {
-			const rawAmount: string = ethers.utils.parseEther(this.mintAmount).toString()
-			await contract.mintTo(this.mintToAddress, rawAmount, 200_000)
-			contract.on('Transfer', () => {
-				console.info('wBAN were minted!')
-				this.reloadBalances()
-			})
-		}
-		*/
 	}
 }
 
