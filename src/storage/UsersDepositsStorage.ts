@@ -2,6 +2,9 @@ import { BigNumber } from "ethers";
 
 interface UsersDepositsStorage {
 	getUserAvailableBalance(from: string): Promise<BigNumber>;
+	lockBalance(from: string): Promise<void>;
+	unlockBalance(from: string): Promise<void>;
+	isBalanceLocked(from: string): Promise<boolean>;
 
 	hasPendingClaim(banAddress: string): Promise<boolean>;
 	storePendingClaim(banAddress: string, bscAddress: string): Promise<boolean>;

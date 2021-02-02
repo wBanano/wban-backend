@@ -3,6 +3,8 @@ import { BigNumber, ethers } from "ethers";
 import { Banano } from "../Banano";
 import config from "../config";
 import { UsersDepositsService } from "./UsersDepositsService";
+import InvalidSignatureError from "../errors/InvalidSignatureError";
+import InsufficientBalanceError from "../errors/InsufficientBalanceError";
 import { BSC } from "../BSC";
 
 class Service {
@@ -57,7 +59,7 @@ class Service {
 		amountStr: number,
 		bscWallet: string,
 		signature: string
-	): Promise<boolean> {
+	): Promise<void> {
 		// verify signature
 		if (
 			!this.checkSignature(
@@ -66,9 +68,8 @@ class Service {
 				`Swap ${amountStr} BAN for wBAN with BAN I deposited from my wallet "${from}"`
 			)
 		) {
-			return false;
+			throw new InvalidSignatureError();
 		}
-		// TODO: store signature?
 
 		const amount: BigNumber = ethers.utils.parseEther(amountStr.toString());
 
@@ -80,14 +81,21 @@ class Service {
 			this.log.warn(
 				`User ${from} has not deposited enough BAN for a swap of ${amount}. Deposited balance is: ${availableBalance}`
 			);
-			return false;
+			throw new InsufficientBalanceError();
 		}
 
-		// mint wBAN tokens
-		const hash = await this.bsc.mintTo(bscWallet, amount);
-		// decrease user deposits
-		await this.usersDepositsService.storeUserSwap(from, amount, hash);
-		return true;
+		try {
+			// lock user balance to prevent other concurrent swaps
+			await this.usersDepositsService.lockBalance(from);
+			// mint wBAN tokens
+			const hash = await this.bsc.mintTo(bscWallet, amount);
+			// decrease user deposits
+			// TODO: store signature?
+			await this.usersDepositsService.storeUserSwap(from, amount, hash);
+		} finally {
+			// unlock user balance
+			await this.usersDepositsService.unlockBalance(from);
+		}
 	}
 
 	checkSignature(

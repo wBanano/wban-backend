@@ -38,6 +38,18 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		return BigNumber.from(rawAmount);
 	}
 
+	async lockBalance(from: string): Promise<void> {
+		return this.redis.set(`locks:balance:${from}`, "1");
+	}
+
+	async unlockBalance(from: string): Promise<void> {
+		return this.redis.del(`locks:balance:${from}`);
+	}
+
+	async isBalanceLocked(from: string): Promise<boolean> {
+		return (await this.redis.exists(`locks:balance:${from}`)) === "1";
+	}
+
 	async hasPendingClaim(banAddress: string): Promise<boolean> {
 		this.log.info(
 			`Checking if there is already a pending claim for ${banAddress}...`
@@ -132,7 +144,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		hash: string
 	): Promise<void> {
 		this.log.info(`TODO: Storing swap of ${amount} BAN for user ${from}`);
-		this.redlock.lock(`locks:deposits:${from}`, 1_000).then(async (lock) => {
+		this.redlock.lock(`locks:swaps:${from}`, 1_000).then(async (lock) => {
 			let rawBalance: string | null;
 			try {
 				rawBalance = await this.redis.get(`deposits:${from}`);

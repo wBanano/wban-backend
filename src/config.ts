@@ -33,11 +33,16 @@ export default {
 		process.env.BANANO_PENDING_TXN_THREAD ?? true,
 
 	BinanceSmartChainJsonRpc: process.env.BSC_JSON_RPC_URL ?? "",
+	BinanceSmartChainBlockExplorerUrl: process.env.BSC_BLOCK_EXPLORER_URL ?? "",
 	BinanceSmartChainNetworkName: process.env.BSC_NETWORK_NAME ?? "",
 	BinanceSmartChainNetworkChainId:
 		Number.parseInt(process.env.BSC_NETWORK_CHAIN_ID, 10) ?? 0,
 	BinanceSmartChainWalletMnemonic: process.env.BSC_WALLET_MMENOMIC ?? "",
+
 	WBANContractAddress: process.env.WBAN_CONTRACT_ADDRESS ?? "",
+	WBANMintGasPrice:
+		Number.parseInt(process.env.WBAN_MINT_GAS_PRICE, 10) ?? 61_000,
+	WBANMintGasLimit: process.env.WBAN_MINT_GAS_LIMIT ?? "20000000000",
 
 	RedisHost: process.env.REDIS_HOST ?? "",
 

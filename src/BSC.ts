@@ -1,10 +1,11 @@
-import { ethers, BigNumber, ContractTransaction, Wallet } from "ethers";
+import { ethers, BigNumber, Wallet, ContractTransaction } from "ethers";
 import { Logger } from "tslog";
 import {
 	WBANToken,
 	// eslint-disable-next-line camelcase
 	WBANToken__factory,
 } from "wban-smart-contract";
+import BSCTransactionFailedError from "./errors/BSCTransactionFailedError";
 import config from "./config";
 
 class BSC {
@@ -49,12 +50,18 @@ class BSC {
 		const txn: ContractTransaction = await this.wBAN.mintTo(
 			address,
 			amount,
-			61_000,
+			config.WBANMintGasPrice,
 			{
-				gasLimit: 61_000,
-				gasPrice: "20000000000", // 20 Gwei
+				gasLimit: config.WBANMintGasPrice,
+				gasPrice: config.WBANMintGasLimit,
 			}
 		);
+		try {
+			await txn.wait();
+		} catch (err) {
+			this.log.error("Transaction failed. Should credit BAN back!");
+			throw new BSCTransactionFailedError(txn.hash, err);
+		}
 		return txn.hash;
 	}
 }

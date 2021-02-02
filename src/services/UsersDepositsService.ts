@@ -2,6 +2,7 @@ import { Logger } from "tslog";
 import { ethers, BigNumber } from "ethers";
 import config from "../config";
 import { UsersDepositsStorage } from "../storage/UsersDepositsStorage";
+import BalanceLockedError from "../errors/BalanceLockedError";
 
 class UsersDepositsService {
 	private usersDepositsStorage: UsersDepositsStorage;
@@ -22,6 +23,17 @@ class UsersDepositsService {
 			)} BAN`
 		);
 		return balance;
+	}
+
+	async lockBalance(from: string): Promise<void> {
+		if (await this.usersDepositsStorage.isBalanceLocked(from)) {
+			throw new BalanceLockedError();
+		}
+		return this.usersDepositsStorage.lockBalance(from);
+	}
+
+	async unlockBalance(from: string): Promise<void> {
+		return this.usersDepositsStorage.unlockBalance(from);
 	}
 
 	async hasPendingClaim(banAddress: string): Promise<boolean> {

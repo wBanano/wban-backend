@@ -7,6 +7,8 @@ import { RedisUsersDepositsStorage } from "./storage/RedisUsersDepositsStorage";
 import { UsersDepositsService } from "./services/UsersDepositsService";
 import ClaimRequest from "./models/requests/ClaimRequest";
 import SwapRequest from "./models/requests/SwapRequest";
+import BalanceLockedError from "./errors/BalanceLockedError";
+import BSCTransactionFailedError from "./errors/BSCTransactionFailedError";
 import config from "./config";
 
 const app: Application = express();
@@ -92,15 +94,29 @@ app.post("/swap", async (req: Request, res: Response) => {
 		`banAmount=${banAmount}, banWallet=${banWallet}, bscWallet=${bscWallet}, signature=${signature}`
 	);
 
-	const result = await svc.swap(banWallet, banAmount, bscWallet, signature);
-	if (!result) {
-		res.status(409).send(`Swap request for ${banAmount} BAN is not possible.`);
-		return;
+	try {
+		await svc.swap(banWallet, banAmount, bscWallet, signature);
+		res.send({
+			message: `Transaction worked!`,
+		});
+	} catch (err) {
+		if (err instanceof BalanceLockedError) {
+			res.status(409).send({
+				error: "Another swap is already in progress!",
+			});
+		} else if (err instanceof BSCTransactionFailedError) {
+			const txnError: BSCTransactionFailedError = err;
+			res.status(409).send({
+				error: "Transaction failed!",
+				link: txnError.getTransactionUrl(),
+			});
+		} else {
+			log.error(err);
+			res.status(409).send({
+				error: `Swap request for ${banAmount} BAN is not possible.`,
+			});
+		}
 	}
-
-	res.send(
-		`Should swap ${banAmount} BAN from ${banWallet} to wBAN ${bscWallet}`
-	);
 });
 
 app.listen(PORT, async () => {
