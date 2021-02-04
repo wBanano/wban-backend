@@ -2,6 +2,7 @@ import { Logger } from "tslog";
 import { ethers, BigNumber } from "ethers";
 import config from "../config";
 import { UsersDepositsStorage } from "../storage/UsersDepositsStorage";
+import SwapToBanEvent from "../models/events/SwapToBanEvent";
 import BalanceLockedError from "../errors/BalanceLockedError";
 
 class UsersDepositsService {
@@ -17,11 +18,13 @@ class UsersDepositsService {
 		const balance = await this.usersDepositsStorage.getUserAvailableBalance(
 			from
 		);
-		this.log.info(
+		/*
+		this.log.debug(
 			`User ${from} has an available balance of ${ethers.utils.formatUnits(
 				balance
 			)} BAN`
 		);
+		*/
 		return balance;
 	}
 
@@ -80,6 +83,22 @@ class UsersDepositsService {
 		hash: string
 	): Promise<void> {
 		return this.usersDepositsStorage.storeUserSwap(from, amount, hash);
+	}
+
+	async getLastBSCBlockProcessed(): Promise<number> {
+		return this.usersDepositsStorage.getLastBSCBlockProcessed();
+	}
+
+	async setLastBSCBlockProcessed(block: number): Promise<void> {
+		return this.usersDepositsStorage.setLastBSCBlockProcessed(block);
+	}
+
+	async swapToBan(event: SwapToBanEvent): Promise<void> {
+		return this.usersDepositsStorage.storeUserSwapToBan(event);
+	}
+
+	async swapToBanWasAlreadyDone(event: SwapToBanEvent): Promise<boolean> {
+		return this.usersDepositsStorage.swapToBanWasAlreadyDone(event);
 	}
 }
 

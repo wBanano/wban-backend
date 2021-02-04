@@ -1,4 +1,5 @@
 import { BigNumber } from "ethers";
+import SwapToBanEvent from "../models/events/SwapToBanEvent";
 
 interface UsersDepositsStorage {
 	getUserAvailableBalance(from: string): Promise<BigNumber>;
@@ -18,6 +19,11 @@ interface UsersDepositsStorage {
 	): Promise<void>;
 	storeUserSwap(from: string, amount: BigNumber, hash: string): Promise<void>;
 	containsTransaction(from: string, hash: string): Promise<boolean>;
+
+	getLastBSCBlockProcessed(): Promise<number>;
+	setLastBSCBlockProcessed(block: number): Promise<void>;
+	storeUserSwapToBan(event: SwapToBanEvent): Promise<void>;
+	swapToBanWasAlreadyDone(event: SwapToBanEvent): Promise<boolean>;
 }
 
 export { UsersDepositsStorage };

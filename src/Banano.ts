@@ -18,7 +18,7 @@ class Banano {
 
 	private representative: string;
 
-	private usersDepositsStorage: UsersDepositsService;
+	private usersDepositsService: UsersDepositsService;
 
 	private ws: WS.client;
 
@@ -34,7 +34,7 @@ class Banano {
 		usersDepositsService: UsersDepositsService
 	) {
 		this.usersDepositsWallet = usersDepositsWallet;
-		this.usersDepositsStorage = usersDepositsService;
+		this.usersDepositsService = usersDepositsService;
 		this.seed = seed;
 		this.seedIdx = seedIdx;
 		this.representative = representative;
@@ -51,6 +51,20 @@ class Banano {
 				"Ignoring checks of pending transactions. Only do this for running tests!"
 			);
 		}
+	}
+
+	async sendBan(banAddress: string, amount: BigNumber): Promise<void> {
+		await this.mutex.runExclusive(async () => {
+			this.log.debug(
+				`Sending ${ethers.utils.formatEther(amount)} BAN to ${banAddress}`
+			);
+			return banano.sendBananoWithdrawalFromSeed(
+				this.seed,
+				this.seedIdx,
+				banAddress,
+				ethers.utils.formatEther(amount)
+			);
+		});
 	}
 
 	async subscribeToBananoNotificationsForWallet(): Promise<void> {
@@ -176,13 +190,13 @@ class Banano {
 	): Promise<void> {
 		await this.mutex.runExclusive(async () => {
 			// check if a pending claim is available
-			if (await this.usersDepositsStorage.hasPendingClaim(sender)) {
+			if (await this.usersDepositsService.hasPendingClaim(sender)) {
 				// confirm it
-				await this.usersDepositsStorage.confirmClaim(sender);
+				await this.usersDepositsService.confirmClaim(sender);
 			}
 
 			// check if there is a valid claim
-			if (!(await this.usersDepositsStorage.hasClaim(sender))) {
+			if (!(await this.usersDepositsService.hasClaim(sender))) {
 				const formattedAmount = ethers.utils.formatEther(amount);
 				this.log.error(
 					`No claim were made for "${sender}". Sending back the ${formattedAmount} BAN deposited`
@@ -201,7 +215,7 @@ class Banano {
 				}
 			} else {
 				// record the user deposit
-				this.usersDepositsStorage.storeUserDeposit(sender, amount, hash);
+				this.usersDepositsService.storeUserDeposit(sender, amount, hash);
 				await this.receiveTransaction(hash);
 			}
 		});
@@ -218,6 +232,7 @@ class Banano {
 			);
 		} catch (err) {
 			this.log.error("Unexpected error", err);
+			this.log.error(err);
 		}
 	}
 }

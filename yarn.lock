@@ -4002,10 +4002,10 @@ vary@^1, vary@~1.1.2:
   resolved "https://registry.yarnpkg.com/vary/-/vary-1.1.2.tgz#2299f02c6ded30d4a5961b0b9f74524a18f634fc"
   integrity sha1-IpnwLG3tMNSllhsLn3RSShj2NPw=
 
-wban-smart-contract@0.1.8:
-  version "0.1.8"
-  resolved "https://registry.yarnpkg.com/wban-smart-contract/-/wban-smart-contract-0.1.8.tgz#664d0dcbbf7ed7fc76edde413fa639605e7cb0c8"
-  integrity sha512-EJwt8xxtbMkteAF5M4yczLQ7OdvMqfcCUY0XnVt5ua5Afd9GgxPlXzroXpJCzvh6DfPgBBFLrGVehMiDp/cZRg==
+wban-smart-contract@0.2.0:
+  version "0.2.0"
+  resolved "https://registry.yarnpkg.com/wban-smart-contract/-/wban-smart-contract-0.2.0.tgz#24fdb466739093509a8cacc7037b2c3fe41df107"
+  integrity sha512-RGhAINtLRaPUrNPh48BWPNVJcCjAs/Gnf6qwDg/sgBrtOYl6B2I9XyvqT9L788rN53zJnN0kiV9YLnrUmxJerQ==
 
 websocket@^1.0.33:
   version "1.0.33"

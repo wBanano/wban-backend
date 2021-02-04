@@ -1,10 +1,12 @@
 import { Logger } from "tslog";
 import { BigNumber, ethers } from "ethers";
+import SwapToBanEvent from "../models/events/SwapToBanEvent";
 import { Banano } from "../Banano";
 import config from "../config";
 import { UsersDepositsService } from "./UsersDepositsService";
 import InvalidSignatureError from "../errors/InvalidSignatureError";
 import InsufficientBalanceError from "../errors/InsufficientBalanceError";
+import { ClaimResponse } from "../models/responses/ClaimResponse";
 import { BSC } from "../BSC";
 
 class Service {
@@ -24,7 +26,8 @@ class Service {
 			config.BananoRepresentative,
 			usersDepositsService
 		);
-		this.bsc = new BSC();
+		this.bsc = new BSC(usersDepositsService);
+		this.bsc.onSwapToBan((event: SwapToBanEvent) => this.swapToBan(event));
 		this.usersDepositsService = usersDepositsService;
 	}
 
@@ -40,7 +43,7 @@ class Service {
 		banWallet: string,
 		bscWallet: string,
 		signature: string
-	): Promise<boolean> {
+	): Promise<ClaimResponse> {
 		// verify signature
 		if (
 			!this.checkSignature(
@@ -49,9 +52,18 @@ class Service {
 				`I hereby claim that the BAN address "${banWallet}" is mine`
 			)
 		) {
-			return false;
+			return ClaimResponse.InvalidSignature;
 		}
-		return this.usersDepositsService.storePendingClaim(banWallet, bscWallet);
+		// check if the user already did the claim process
+		if (await this.usersDepositsService.hasClaim(banWallet)) {
+			return ClaimResponse.AlreadyDone;
+		}
+		return (await this.usersDepositsService.storePendingClaim(
+			banWallet,
+			bscWallet
+		))
+			? ClaimResponse.Ok
+			: ClaimResponse.Error;
 	}
 
 	async swap(
@@ -95,6 +107,22 @@ class Service {
 		} finally {
 			// unlock user balance
 			await this.usersDepositsService.unlockBalance(from);
+		}
+	}
+
+	async swapToBan(event: SwapToBanEvent): Promise<void> {
+		try {
+			// check if the BAN were already sent
+			if (await this.usersDepositsService.swapToBanWasAlreadyDone(event)) {
+				this.log.warn(`Swap for ${event.hash} was already done.`);
+				return;
+			}
+			// send the BAN to the user
+			await this.banano.sendBan(event.banAddress, event.amount);
+			// store user swap from wBAN to BAN
+			await this.usersDepositsService.swapToBan(event);
+		} catch (err) {
+			this.log.error("Couldn't send BAN", err);
 		}
 	}
 

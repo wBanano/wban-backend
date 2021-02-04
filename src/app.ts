@@ -10,6 +10,7 @@ import SwapRequest from "./models/requests/SwapRequest";
 import BalanceLockedError from "./errors/BalanceLockedError";
 import BSCTransactionFailedError from "./errors/BSCTransactionFailedError";
 import config from "./config";
+import { ClaimResponse } from "./models/responses/ClaimResponse";
 
 const app: Application = express();
 const PORT = 3000;
@@ -70,15 +71,24 @@ app.post("/claim", async (req: Request, res: Response) => {
 	log.info(
 		`Check claim for ${banAddress} and ${bscAddress} with signature ${sig}`
 	);
-	const result = await svc.claim(banAddress, bscAddress, sig);
-	if (result) {
-		res.send({
-			status: "OK",
-		});
-	} else {
-		res.status(409).send({
-			message: "Invalid claim.",
-		});
+	const result: ClaimResponse = await svc.claim(banAddress, bscAddress, sig);
+	switch (result) {
+		case ClaimResponse.Ok:
+			res.send({
+				status: "OK",
+			});
+			break;
+		case ClaimResponse.AlreadyDone:
+			res.status(202).send({
+				status: "Already done",
+			});
+			break;
+		case ClaimResponse.InvalidSignature:
+		case ClaimResponse.Error:
+		default:
+			res.status(409).send({
+				message: "Invalid claim.",
+			});
 	}
 });
 

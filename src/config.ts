@@ -26,7 +26,7 @@ const log: Logger = new Logger({
 export default {
 	BananoUsersDepositsWallet: process.env.BANANO_USERS_DEPOSITS_WALLET ?? "",
 	BananoSeed: process.env.BANANO_SEED ?? "",
-	BananoSeedIdx: Number.parseInt(process.env.BANANO_SEED, 10) ?? 0,
+	BananoSeedIdx: Number.parseInt(process.env.BANANO_SEED_INDEX, 10) ?? 0,
 	BananoRepresentative: process.env.BANANO_REPRESENTATIVE ?? "",
 	BananoWebSocketsAPI: process.env.BANANO_WS_API ?? "",
 	BananoPendingTransactionsThreadEnabled:
@@ -38,6 +38,10 @@ export default {
 	BinanceSmartChainNetworkChainId:
 		Number.parseInt(process.env.BSC_NETWORK_CHAIN_ID, 10) ?? 0,
 	BinanceSmartChainWalletMnemonic: process.env.BSC_WALLET_MMENOMIC ?? "",
+	BinanceSmartChainWalletPendingTransactionsThreadEnabled:
+		process.env.BSC_PENDING_TXN_THREAD ?? true,
+	BinanceSmartChainWalletPendingTransactionsStartFromBlock:
+		Number.parseInt(process.env.BSC_PENDING_BLOCKS_START, 10) ?? 0,
 
 	WBANContractAddress: process.env.WBAN_CONTRACT_ADDRESS ?? "",
 	WBANMintGasPrice:
