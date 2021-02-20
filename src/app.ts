@@ -105,9 +105,11 @@ app.post("/swap", async (req: Request, res: Response) => {
 	);
 
 	try {
-		await svc.swap(banWallet, banAmount, bscWallet, signature);
+		const txnHash = await svc.swap(banWallet, banAmount, bscWallet, signature);
 		res.send({
 			message: `Transaction worked!`,
+			transaction: txnHash,
+			link: `${config.BinanceSmartChainBlockExplorerUrl}/tx/${txnHash}`,
 		});
 	} catch (err) {
 		if (err instanceof BalanceLockedError) {
@@ -118,6 +120,7 @@ app.post("/swap", async (req: Request, res: Response) => {
 			const txnError: BSCTransactionFailedError = err;
 			res.status(409).send({
 				error: "Transaction failed!",
+				transaction: txnError.hash,
 				link: txnError.getTransactionUrl(),
 			});
 		} else {

@@ -71,7 +71,7 @@ class Service {
 		amountStr: number,
 		bscWallet: string,
 		signature: string
-	): Promise<void> {
+	): Promise<string> {
 		// verify signature
 		if (
 			!this.checkSignature(
@@ -104,6 +104,7 @@ class Service {
 			// decrease user deposits
 			// TODO: store signature?
 			await this.usersDepositsService.storeUserSwap(from, amount, hash);
+			return hash;
 		} finally {
 			// unlock user balance
 			await this.usersDepositsService.unlockBalance(from);
