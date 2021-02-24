@@ -17,6 +17,11 @@ interface UsersDepositsStorage {
 		amount: BigNumber,
 		hash: string
 	): Promise<void>;
+	storeUserWithdrawal(
+		from: string,
+		amount: BigNumber,
+		sig: string
+	): Promise<void>;
 	storeUserSwap(from: string, amount: BigNumber, hash: string): Promise<void>;
 	containsTransaction(from: string, hash: string): Promise<boolean>;
 

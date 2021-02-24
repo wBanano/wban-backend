@@ -18,13 +18,6 @@ class UsersDepositsService {
 		const balance = await this.usersDepositsStorage.getUserAvailableBalance(
 			from
 		);
-		/*
-		this.log.debug(
-			`User ${from} has an available balance of ${ethers.utils.formatUnits(
-				balance
-			)} BAN`
-		);
-		*/
 		return balance;
 	}
 
@@ -75,6 +68,15 @@ class UsersDepositsService {
 		}
 		// store the user deposit
 		this.usersDepositsStorage.storeUserDeposit(from, amount, hash);
+	}
+
+	async storeUserWithdrawal(
+		from: string,
+		amount: BigNumber,
+		sig: string
+	): Promise<void> {
+		// store the user withdrawal
+		this.usersDepositsStorage.storeUserWithdrawal(from, amount, sig);
 	}
 
 	async storeUserSwap(

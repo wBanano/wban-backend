@@ -53,8 +53,8 @@ class Banano {
 		}
 	}
 
-	async sendBan(banAddress: string, amount: BigNumber): Promise<void> {
-		await this.mutex.runExclusive(async () => {
+	async sendBan(banAddress: string, amount: BigNumber): Promise<string> {
+		return this.mutex.runExclusive(async () => {
 			this.log.debug(
 				`Sending ${ethers.utils.formatEther(amount)} BAN to ${banAddress}`
 			);

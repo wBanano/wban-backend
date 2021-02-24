@@ -7,6 +7,7 @@ import { RedisUsersDepositsStorage } from "./storage/RedisUsersDepositsStorage";
 import { UsersDepositsService } from "./services/UsersDepositsService";
 import ClaimRequest from "./models/requests/ClaimRequest";
 import SwapRequest from "./models/requests/SwapRequest";
+import WithdrawalRequest from "./models/requests/WithdrawalRequest";
 import BalanceLockedError from "./errors/BalanceLockedError";
 import BSCTransactionFailedError from "./errors/BSCTransactionFailedError";
 import config from "./config";
@@ -61,6 +62,49 @@ app.get("/deposits/ban/:ban_wallet", async (req: Request, res: Response) => {
 		await new Promise((resolve) => setTimeout(resolve, 5000));
 		// eslint-disable-next-line no-await-in-loop
 		res.write(`data: ${await svc.getUserAvailableBalance(banWallet)}\n\n`);
+	}
+});
+
+app.post("/withdrawals/ban", async (req: Request, res: Response) => {
+	// TODO: make sure all required parameters are sent!
+	const withdrawalRequest: WithdrawalRequest = req.body as WithdrawalRequest;
+	const banAmount: number = withdrawalRequest.amount;
+	const banWallet: string = withdrawalRequest.ban;
+	const bscWallet: string = withdrawalRequest.bsc;
+	const signature: string = withdrawalRequest.sig;
+
+	log.info(`Withdrawing ${banAmount} BAN to ${banWallet}`);
+
+	try {
+		const txnHash = await svc.withdrawBAN(
+			banWallet,
+			banAmount,
+			bscWallet,
+			signature
+		);
+		res.send({
+			message: `Transaction worked!`,
+			transaction: txnHash,
+			link: `${config.BinanceSmartChainBlockExplorerUrl}/tx/${txnHash}`,
+		});
+	} catch (err) {
+		if (err instanceof BalanceLockedError) {
+			res.status(409).send({
+				error: "Another swap is already in progress!",
+			});
+		} else if (err instanceof BSCTransactionFailedError) {
+			const txnError: BSCTransactionFailedError = err;
+			res.status(409).send({
+				error: "Transaction failed!",
+				transaction: txnError.hash,
+				link: txnError.getTransactionUrl(),
+			});
+		} else {
+			log.error(err);
+			res.status(409).send({
+				error: `Swap request for ${banAmount} BAN is not possible.`,
+			});
+		}
 	}
 });
 

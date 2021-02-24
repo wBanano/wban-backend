@@ -85,7 +85,7 @@ class Service {
 
 		const amount: BigNumber = ethers.utils.parseEther(amountStr.toString());
 
-		// TODO: check if deposits are greater than or equal to amount to swap
+		// check if deposits are greater than or equal to amount to swap
 		const availableBalance: BigNumber = await this.usersDepositsService.getUserAvailableBalance(
 			from
 		);
@@ -108,6 +108,59 @@ class Service {
 		} finally {
 			// unlock user balance
 			await this.usersDepositsService.unlockBalance(from);
+		}
+	}
+
+	async withdrawBAN(
+		to: string,
+		amountStr: number,
+		bscWallet: string,
+		signature: string
+	): Promise<string> {
+		// verify signature
+		if (
+			!this.checkSignature(
+				bscWallet,
+				signature,
+				`Withdraw ${amountStr} BAN to my wallet "${to}"`
+			)
+		) {
+			throw new InvalidSignatureError();
+		}
+
+		if (!this.usersDepositsService.hasClaim(to)) {
+			throw new Error(`Can't withdraw from unclaimed wallet ${to}`);
+		}
+
+		const amount: BigNumber = ethers.utils.parseEther(amountStr.toString());
+
+		// check if deposits are greater than or equal to amount to swap
+		const availableBalance: BigNumber = await this.usersDepositsService.getUserAvailableBalance(
+			to
+		);
+		if (!availableBalance.gte(amount)) {
+			this.log.warn(
+				`User ${to} has not deposited enough BAN for a withdrawal of ${amount}. Deposited balance is: ${availableBalance}`
+			);
+			throw new InsufficientBalanceError();
+		}
+
+		try {
+			// lock user balance to prevent other concurrent swaps
+			await this.usersDepositsService.lockBalance(to);
+			// send the BAN to the user
+			const hash = await this.banano.sendBan(to, amount);
+			// decrease user deposits
+			// TODO: store signature?
+			await this.usersDepositsService.storeUserWithdrawal(
+				to,
+				amount,
+				signature
+			);
+			return hash;
+		} finally {
+			// unlock user balance
+			await this.usersDepositsService.unlockBalance(to);
 		}
 	}
 

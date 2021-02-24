@@ -136,6 +136,41 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		});
 	}
 
+	async storeUserWithdrawal(
+		from: string,
+		amount: BigNumber,
+		sig: string
+	): Promise<void> {
+		this.log.info(`Storing user withdrawal to: ${from}, amount: ${amount} BAN`);
+		this.redlock.lock(`locks:deposits:${from}`, 1_000).then(async (lock) => {
+			let rawBalance: string | null;
+			try {
+				rawBalance = await this.redis.get(`deposits:${from}`);
+				let balance: BigNumber;
+				if (rawBalance) {
+					balance = BigNumber.from(rawBalance);
+				} else {
+					balance = BigNumber.from(0);
+				}
+				balance = balance.sub(amount);
+
+				await this.redis
+					.multi()
+					.set(`deposits:${from}`, balance.toString())
+					.sadd(`txn:${from}`, sig)
+					.exec();
+				this.log.info(
+					`Stored user withdrawal from: ${from}, amount: ${amount} BAN, sig: ${sig}`
+				);
+			} catch (err) {
+				this.log.error(err);
+			}
+
+			// unlock resource when done
+			return lock.unlock().catch((err) => this.log.error(err));
+		});
+	}
+
 	async storeUserSwap(
 		from: string,
 		amount: BigNumber,
