@@ -46,12 +46,16 @@ class UsersDepositsService {
 		return this.usersDepositsStorage.storePendingClaim(banAddress, bscAddress);
 	}
 
-	async hasClaim(banAddress: string): Promise<boolean> {
-		return this.usersDepositsStorage.hasClaim(banAddress);
+	async isClaimed(banAddress: string): Promise<boolean> {
+		return this.usersDepositsStorage.isClaimed(banAddress);
+	}
+
+	async hasClaim(banAddress: string, bscAddress: string): Promise<boolean> {
+		return this.usersDepositsStorage.hasClaim(banAddress, bscAddress);
 	}
 
 	async confirmClaim(banAddress: string): Promise<boolean> {
-		return this.usersDepositsStorage.storeClaim(banAddress);
+		return this.usersDepositsStorage.confirmClaim(banAddress);
 	}
 
 	async storeUserDeposit(

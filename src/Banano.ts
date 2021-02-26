@@ -196,7 +196,7 @@ class Banano {
 			}
 
 			// check if there is a valid claim
-			if (!(await this.usersDepositsService.hasClaim(sender))) {
+			if (!(await this.usersDepositsService.isClaimed(sender))) {
 				const formattedAmount = ethers.utils.formatEther(amount);
 				this.log.error(
 					`No claim were made for "${sender}". Sending back the ${formattedAmount} BAN deposited`

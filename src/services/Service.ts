@@ -55,15 +55,20 @@ class Service {
 			return ClaimResponse.InvalidSignature;
 		}
 		// check if the user already did the claim process
-		if (await this.usersDepositsService.hasClaim(banWallet)) {
+		if (await this.usersDepositsService.hasClaim(banWallet, bscWallet)) {
 			return ClaimResponse.AlreadyDone;
 		}
-		return (await this.usersDepositsService.storePendingClaim(
-			banWallet,
-			bscWallet
-		))
-			? ClaimResponse.Ok
-			: ClaimResponse.Error;
+		// check if there is a pending claim
+		if (await this.usersDepositsService.hasPendingClaim(banWallet)) {
+			return (await this.usersDepositsService.storePendingClaim(
+				banWallet,
+				bscWallet
+			))
+				? ClaimResponse.Ok
+				: ClaimResponse.Error;
+		}
+		// assume this is another use who tried to do this
+		return ClaimResponse.InvalidOwner;
 	}
 
 	async swap(
@@ -128,8 +133,10 @@ class Service {
 			throw new InvalidSignatureError();
 		}
 
-		if (!this.usersDepositsService.hasClaim(to)) {
+		if (!this.usersDepositsService.isClaimed(to)) {
 			throw new Error(`Can't withdraw from unclaimed wallet ${to}`);
+		} else if (!this.usersDepositsService.hasClaim(to, bscWallet)) {
+			throw new Error("Can't withdraw from another BSC wallet");
 		}
 
 		const amount: BigNumber = ethers.utils.parseEther(amountStr.toString());

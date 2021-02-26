@@ -127,6 +127,12 @@ app.post("/claim", async (req: Request, res: Response) => {
 				status: "Already done",
 			});
 			break;
+		case ClaimResponse.InvalidOwner:
+			res.status(409).send({
+				message:
+					"This BAN wallet was already claimed by another Binance Smart Chain Address.",
+			});
+			break;
 		case ClaimResponse.InvalidSignature:
 		case ClaimResponse.Error:
 		default:

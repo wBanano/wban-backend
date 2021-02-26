@@ -81,21 +81,30 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		}
 	}
 
-	async hasClaim(banAddress: string): Promise<boolean> {
+	async isClaimed(banAddress: string): Promise<boolean> {
 		const pendingClaims = await this.redis.keys(`claims:${banAddress}:*`);
 		const exists = pendingClaims.length > 0;
 		this.log.debug(`Checked if there is a claim for ${banAddress}: ${exists}`);
 		return exists;
 	}
 
-	async storeClaim(banAddress: string): Promise<boolean> {
+	async hasClaim(banAddress: string, bscAddress: string): Promise<boolean> {
+		const pendingClaims = await this.redis.keys(
+			`claims:${banAddress}:${bscAddress}`
+		);
+		const exists = pendingClaims.length > 0;
+		this.log.debug(`Checked if there is a claim for ${banAddress}: ${exists}`);
+		return exists;
+	}
+
+	async confirmClaim(banAddress: string): Promise<boolean> {
 		const pendingClaims = await this.redis.keys(
 			`claims:pending:${banAddress}:*`
 		);
 		const key = pendingClaims[0].replace(":pending", "");
 		// claims:pending:ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o:0xec410e9f2756c30be4682a7e29918082adc12b55
 		await this.redis.set(key, 1);
-		this.log.info(`Stored claim for ${banAddress} and ${key}`);
+		this.log.info(`Stored claim for ${banAddress} with ${key}`);
 		return true;
 	}
 
