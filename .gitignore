@@ -5,3 +5,5 @@ node_modules
 .env.mainnet
 .eslintcache
 run.sh
+.nyc_output
+coverage

@@ -1,21 +1,30 @@
 import chai from "chai";
+import chaiAsPromised from "chai-as-promised";
 import * as sinon from "ts-sinon";
 import sinonChai from "sinon-chai";
 import config from "../../src/config";
 import { UsersDepositsService } from "../../src/services/UsersDepositsService";
 import { Service } from "../../src/services/Service";
 import { ClaimResponse } from "../../src/models/responses/ClaimResponse";
+import { BigNumber, ethers } from "ethers";
+import { BSC } from "../../src/BSC";
+import InvalidOwner from "../../src/errors/InvalidOwner";
+import InvalidSignatureError from "../../src/errors/InvalidSignatureError";
 
 const { expect } = chai;
 chai.use(sinonChai);
+chai.use(chaiAsPromised);
 
 describe("Main Service", () => {
 	let svc: Service = null;
 	let depositsService: any = null;
+	let bsc: any = null;
 
 	beforeEach(async () => {
 		depositsService = sinon.stubInterface<UsersDepositsService>();
+		bsc = sinon.stubInterface<BSC>();
 		svc = new Service(depositsService);
+		svc.bsc = bsc;
 	});
 
 	it("Checks properly signatures", async () => {
@@ -25,6 +34,9 @@ describe("Main Service", () => {
 		const bscWallet = "0x69fd25b60da76afd10d8fc7306f10f2934fc4829";
 		const signature =
 			"0x8b828450dbc98d25c13443f91338863bb319266d3d9e92fdf5e1eb4d9b241b85704dcabe560382790435510b33b2990057d3325fb992e9f29b5c9ffede6b5e121c";
+		const badSignature =
+			"0x8b828450dbc98d25c13443f91338863bb319266d3d9e92fdf5e1eb4d9b241b85704dcabe560382790435510b33b2990057d3325fb992e9f29b5c9ffede6b5e121b";
+
 		expect(
 			svc.checkSignature(
 				bscWallet,
@@ -32,6 +44,7 @@ describe("Main Service", () => {
 				`Swap ${amount} BAN for wBAN with BAN I deposited from my wallet "${from}"`
 			)
 		).to.be.true;
+
 		expect(
 			svc.checkSignature(
 				"0x59fd25b60da76afd10d8fc7306f10f2934fc4828",
@@ -39,6 +52,10 @@ describe("Main Service", () => {
 				`Swap ${amount} BAN for wBAN with BAN I deposited from my wallet "${from}"`
 			)
 		).to.be.false;
+
+		await expect(
+			svc.swap(from, 10, bscWallet, badSignature)
+		).to.eventually.be.rejectedWith(InvalidSignatureError);
 	});
 
 	describe("Claims for BAN wallet", () => {
@@ -108,6 +125,48 @@ describe("Main Service", () => {
 			);
 
 			expect(depositsService.storePendingClaim).to.have.been.calledOnce;
+		});
+	});
+
+	describe("Safeguards against impersonating", () => {
+		it("Checks that a swap can only be done from a valid claim", async () => {
+			const amount = ethers.utils.parseEther("10");
+
+			const banWallet =
+				"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
+
+			const bscWallet1 = "0xec410e9f2756c30be4682a7e29918082adc12b55";
+			const signature1 =
+				"0x3931a99b23a5156661949e6f25ab12bb4f827dae7e17e7a54da28b5de517666130b4f639b99288118a1d5736a55a6b6bca833ab09fc1a2ca7164e2fe15deb1331b";
+
+			const bscWallet2 = "0x69FD25B60Da76Afd10D8Fc7306f10f2934fC4829";
+			const signature2 =
+				"0xf9960fcdc11388a841ab29a53e655fc1f5b117c77a00b4145eaafda24898ac3d20887765b5cd415b7a6bef3f665d5ce0478ad569888963eb889fd0b07ec85c7b1c";
+
+			depositsService.getUserAvailableBalance
+				.withArgs(banWallet)
+				.returns(Promise.resolve(amount));
+			depositsService.hasClaim
+				.withArgs(banWallet, bscWallet1)
+				.returns(Promise.resolve(true))
+				.withArgs(banWallet, bscWallet2)
+				.returns(Promise.resolve(false));
+			bsc.mintTo
+				.withArgs(bscWallet1, amount)
+				.returns(Promise.resolve("0xCAFEBABE"))
+				.withArgs(bscWallet2, amount)
+				.returns(Promise.resolve("0xCAFEBABE"));
+
+			// legit user should be able to swap
+			expect(await svc.swap(banWallet, 10, bscWallet1, signature1)).to.equal(
+				"0xCAFEBABE"
+			);
+
+			// hacker trying to swap funds from a wallet he doesn't own should be able to do it
+			// expect(await svc.swap(banWallet, 10, bscWallet2, signature2));
+			await expect(
+				svc.swap(banWallet, 10, bscWallet2, signature2)
+			).to.eventually.be.rejectedWith(InvalidOwner);
 		});
 	});
 });

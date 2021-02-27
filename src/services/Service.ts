@@ -5,6 +5,7 @@ import { Banano } from "../Banano";
 import config from "../config";
 import { UsersDepositsService } from "./UsersDepositsService";
 import InvalidSignatureError from "../errors/InvalidSignatureError";
+import InvalidOwner from "../errors/InvalidOwner";
 import InsufficientBalanceError from "../errors/InsufficientBalanceError";
 import { ClaimResponse } from "../models/responses/ClaimResponse";
 import { BSC } from "../BSC";
@@ -12,7 +13,7 @@ import { BSC } from "../BSC";
 class Service {
 	private banano: Banano;
 
-	private bsc: BSC;
+	public bsc: BSC;
 
 	private usersDepositsService: UsersDepositsService;
 
@@ -86,6 +87,10 @@ class Service {
 			)
 		) {
 			throw new InvalidSignatureError();
+		}
+		// verify if there is a proper claim
+		if (!(await this.usersDepositsService.hasClaim(from, bscWallet))) {
+			throw new InvalidOwner();
 		}
 
 		const amount: BigNumber = ethers.utils.parseEther(amountStr.toString());
