@@ -1,6 +1,8 @@
 import express, { Application, Request, Response } from "express";
 import cors from "cors";
 import { Logger } from "tslog";
+import { ethers } from "ethers";
+import SSEManager from "./services/sse/SSEManager";
 import { Service } from "./services/Service";
 import { UsersDepositsStorage } from "./storage/UsersDepositsStorage";
 import { RedisUsersDepositsStorage } from "./storage/RedisUsersDepositsStorage";
@@ -8,12 +10,19 @@ import { UsersDepositsService } from "./services/UsersDepositsService";
 import ClaimRequest from "./models/requests/ClaimRequest";
 import SwapRequest from "./models/requests/SwapRequest";
 import WithdrawalRequest from "./models/requests/WithdrawalRequest";
-import BalanceLockedError from "./errors/BalanceLockedError";
-import BSCTransactionFailedError from "./errors/BSCTransactionFailedError";
 import config from "./config";
 import { ClaimResponse } from "./models/responses/ClaimResponse";
+import ProcessingQueue from "./services/queuing/ProcessingQueue";
+import PendingWithdrawalsQueue from "./services/queuing/PendingWithdrawalsQueue";
+import JobListener from "./services/queuing/JobListener";
+import RedisProcessingQueue from "./services/queuing/RedisProcessingQueue";
+import RedisPendingWithdrawalsQueue from "./services/queuing/RedisPendingWithdrawalsQueue";
+import RepeatableQueue from "./services/queuing/RepeatableQueue";
+import RedisRepeatableQueue from "./services/queuing/RedisRepeatableQueue";
 
 const app: Application = express();
+// const sse: SSE = new SSE();
+const sseManager = new SSEManager();
 const PORT = 3000;
 const log: Logger = config.Logger.getChildLogger();
 
@@ -24,7 +33,15 @@ const usersDepositsStorage: UsersDepositsStorage = new RedisUsersDepositsStorage
 const usersDepositsService: UsersDepositsService = new UsersDepositsService(
 	usersDepositsStorage
 );
-const svc = new Service(usersDepositsService);
+const processingQueue: ProcessingQueue = new RedisProcessingQueue();
+const pendingWithdrawalsQueue: PendingWithdrawalsQueue = new RedisPendingWithdrawalsQueue();
+const repeatableQueue: RepeatableQueue = new RedisRepeatableQueue();
+const svc = new Service(
+	usersDepositsService,
+	processingQueue,
+	pendingWithdrawalsQueue,
+	repeatableQueue
+);
 svc.start();
 
 app.get("/health", (req: Request, res: Response) => {
@@ -36,33 +53,16 @@ app.get("/health", (req: Request, res: Response) => {
 
 app.get("/deposits/ban/wallet", async (req: Request, res: Response) => {
 	res.send({
-		address: config.BananoUsersDepositsWallet,
+		address: config.BananoUsersDepositsHotWallet,
 	});
 });
 
 app.get("/deposits/ban/:ban_wallet", async (req: Request, res: Response) => {
 	const banWallet = req.params.ban_wallet;
-
-	res.set({
-		"Cache-Control": "no-cache",
-		"Content-Type": "text/event-stream",
-		Connection: "keep-alive",
+	const balance = await svc.getUserAvailableBalance(banWallet);
+	res.send({
+		balance: ethers.utils.formatEther(balance),
 	});
-	res.flushHeaders();
-
-	res.write("retry: 10000\n\n");
-
-	let connected = true;
-	req.on("close", () => {
-		connected = false;
-	});
-
-	while (connected) {
-		// eslint-disable-next-line no-await-in-loop
-		await new Promise((resolve) => setTimeout(resolve, 5000));
-		// eslint-disable-next-line no-await-in-loop
-		res.write(`data: ${await svc.getUserAvailableBalance(banWallet)}\n\n`);
-	}
 });
 
 app.post("/withdrawals/ban", async (req: Request, res: Response) => {
@@ -75,37 +75,14 @@ app.post("/withdrawals/ban", async (req: Request, res: Response) => {
 
 	log.info(`Withdrawing ${banAmount} BAN to ${banWallet}`);
 
-	try {
-		const txnHash = await svc.withdrawBAN(
-			banWallet,
-			banAmount,
-			bscWallet,
-			signature
-		);
-		res.send({
-			message: `Transaction worked!`,
-			transaction: txnHash,
-			link: `${config.BinanceSmartChainBlockExplorerUrl}/tx/${txnHash}`,
-		});
-	} catch (err) {
-		if (err instanceof BalanceLockedError) {
-			res.status(409).send({
-				error: "Another swap is already in progress!",
-			});
-		} else if (err instanceof BSCTransactionFailedError) {
-			const txnError: BSCTransactionFailedError = err;
-			res.status(409).send({
-				error: "Transaction failed!",
-				transaction: txnError.hash,
-				link: txnError.getTransactionUrl(),
-			});
-		} else {
-			log.error(err);
-			res.status(409).send({
-				error: `Swap request for ${banAmount} BAN is not possible.`,
-			});
-		}
-	}
+	await svc.withdrawBAN(
+		banWallet,
+		banAmount.toString(),
+		bscWallet,
+		new Date(),
+		signature
+	);
+	res.status(201).send();
 });
 
 app.post("/claim", async (req: Request, res: Response) => {
@@ -154,33 +131,53 @@ app.post("/swap", async (req: Request, res: Response) => {
 		`banAmount=${banAmount}, banWallet=${banWallet}, bscWallet=${bscWallet}, signature=${signature}`
 	);
 
-	try {
-		const txnHash = await svc.swap(banWallet, banAmount, bscWallet, signature);
-		res.send({
-			message: `Transaction worked!`,
-			transaction: txnHash,
-			link: `${config.BinanceSmartChainBlockExplorerUrl}/tx/${txnHash}`,
-		});
-	} catch (err) {
-		if (err instanceof BalanceLockedError) {
-			res.status(409).send({
-				error: "Another swap is already in progress!",
-			});
-		} else if (err instanceof BSCTransactionFailedError) {
-			const txnError: BSCTransactionFailedError = err;
-			res.status(409).send({
-				error: "Transaction failed!",
-				transaction: txnError.hash,
-				link: txnError.getTransactionUrl(),
+	await svc.swapToWBAN(banWallet, banAmount, bscWallet, new Date(), signature);
+	res.status(201).send();
+});
+
+/*
+ * SERVER-SIDE EVENT MANAGEMENT
+ */
+
+app.set("sseManager", sseManager);
+
+app.get("/events/:ban_wallet", async (req: Request, res: Response) => {
+	const sse = req.app.get("sseManager");
+	const id = req.params.ban_wallet;
+	sse.open(id, res);
+	req.on("close", () => {
+		sse.delete(id);
+	});
+});
+
+const jobListener: JobListener = {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	onJobCompleted(id: string, name: string, result: any): void {
+		if (!result) {
+			return;
+		}
+		log.warn(
+			`Job ${name} with id ${id} completed with result ${JSON.stringify(
+				result
+			)}`
+		);
+		if (result.banWallet) {
+			sseManager.unicast(result.banWallet, {
+				id,
+				type: name,
+				data: result,
 			});
 		} else {
-			log.error(err);
-			res.status(409).send({
-				error: `Swap request for ${banAmount} BAN is not possible.`,
+			sseManager.broadcast({
+				id,
+				type: name,
+				data: result,
 			});
 		}
-	}
-});
+	},
+};
+processingQueue.addJobListener(jobListener);
+pendingWithdrawalsQueue.addJobListener(jobListener);
 
 app.listen(PORT, async () => {
 	console.log(

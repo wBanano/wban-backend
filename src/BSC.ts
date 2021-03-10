@@ -5,12 +5,12 @@ import {
 	// eslint-disable-next-line camelcase
 	WBANToken__factory,
 } from "wban-smart-contract";
-import cron from "node-cron";
-import SwapToBanEvent from "./models/events/SwapToBanEvent";
+import SwapWBANToBan from "./models/operations/SwapWBANToBan";
 import { SwapToBanEventListener } from "./models/listeners/SwapToBanEventListener";
 import BSCTransactionFailedError from "./errors/BSCTransactionFailedError";
 import { UsersDepositsService } from "./services/UsersDepositsService";
 import config from "./config";
+import RepeatableQueue from "./services/queuing/RepeatableQueue";
 
 class BSC {
 	private wBAN: WBANToken;
@@ -25,7 +25,10 @@ class BSC {
 
 	private log: Logger = config.Logger.getChildLogger();
 
-	constructor(usersDepositsService: UsersDepositsService) {
+	constructor(
+		usersDepositsService: UsersDepositsService,
+		repeatableQueue: RepeatableQueue
+	) {
 		this.usersDepositsService = usersDepositsService;
 
 		if (config.BinanceSmartChainNetworkName === "none") {
@@ -50,25 +53,36 @@ class BSC {
 			this.wBAN.on(
 				this.wBAN.filters.SwapToBan(null, null, null),
 				async (
-					from: string,
-					banAddress: string,
+					bscWallet: string,
+					banWallet: string,
 					amount: BigNumber,
 					event: ethers.Event
 				) => {
+					const block = await this.provider.getBlock(event.blockNumber);
+					const date = new Date(block.timestamp).toISOString();
+					const wbanBalance = await this.wBAN.balanceOf(bscWallet);
 					await this.handleSwapToBanEvents({
-						from,
-						banAddress,
-						amount,
+						bscWallet,
+						banWallet,
+						amount: ethers.utils.formatEther(amount),
+						wbanBalance: ethers.utils.formatEther(wbanBalance),
 						hash: event.transactionHash,
+						date,
+						checkUserBalance: false,
 					});
 				}
 			);
 			if (
 				config.BinanceSmartChainWalletPendingTransactionsThreadEnabled === true
 			) {
-				cron.schedule("*/1 * * * *", async () => {
-					this.processBlocks();
+				// eslint-disable-next-line @typescript-eslint/no-unused-vars
+				repeatableQueue.registerProcessor("bsc-scan", async (job) => {
+					await this.processBlocks();
 				});
+				// scan BSC blockchain every 30 seconds
+				repeatableQueue
+					.schedulePeriodicJob("bsc-scan", 30_000)
+					.then(() => repeatableQueue.start());
 			} else {
 				this.log.warn(
 					"Ignoring checks of pending transactions. Only do this for running tests!"
@@ -83,8 +97,11 @@ class BSC {
 		}
 	}
 
-	async mintTo(address: string, amount: BigNumber): Promise<string> {
-		this.log.debug("in mint");
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async mintTo(address: string, amount: BigNumber): Promise<any> {
+		this.log.debug(
+			`Minting ${ethers.utils.formatEther(amount)} BAN to ${address}`
+		);
 		const txn: ContractTransaction = await this.wBAN.mintTo(
 			address,
 			amount,
@@ -100,50 +117,66 @@ class BSC {
 			this.log.error("Transaction failed. Should credit BAN back!");
 			throw new BSCTransactionFailedError(txn.hash, err);
 		}
-		return txn.hash;
+		const wbanBalance: BigNumber = await this.wBAN.balanceOf(address);
+		return {
+			hash: txn.hash,
+			wbanBalance,
+		};
 	}
 
 	async processBlocks(): Promise<void> {
-		const latestBlockProcessed: number = await this.usersDepositsService.getLastBSCBlockProcessed();
-		const currentBlock: number = await this.provider.getBlockNumber();
-		this.log.info(
-			`Processing blocks from ${latestBlockProcessed} to ${currentBlock}...`
-		);
-		const logs: ethers.Event[] = await this.wBAN.queryFilter(
-			this.wBAN.filters.SwapToBan(null, null, null),
-			latestBlockProcessed,
-			currentBlock
-		);
-		const events: SwapToBanEvent[] = logs.map((log) => {
-			const parsedLog = this.wBAN.interface.parseLog(log);
-			return {
-				from: parsedLog.args.from,
-				banAddress: parsedLog.args.ban_address,
-				amount: BigNumber.from(parsedLog.args.amount),
-				hash: log.transactionHash,
-			};
-		});
-		events.forEach(async (swapEvent) => {
-			await this.handleSwapToBanEvents(swapEvent);
-		});
-		this.usersDepositsService.setLastBSCBlockProcessed(currentBlock);
+		try {
+			const latestBlockProcessed: number = await this.usersDepositsService.getLastBSCBlockProcessed();
+			const currentBlock: number = await this.provider.getBlockNumber();
+			this.log.info(
+				`Processing blocks from ${
+					latestBlockProcessed + 1
+				} to ${currentBlock}...`
+			);
+			const logs: ethers.Event[] = await this.wBAN.queryFilter(
+				this.wBAN.filters.SwapToBan(null, null, null),
+				latestBlockProcessed + 1,
+				currentBlock
+			);
+			const events: SwapWBANToBan[] = await Promise.all(
+				logs.map(async (log) => {
+					const parsedLog = this.wBAN.interface.parseLog(log);
+					const block = await this.provider.getBlock(log.blockNumber);
+					const date = new Date(block.timestamp).toISOString();
+					const { from } = parsedLog.args;
+					const wbanBalance = await this.wBAN.balanceOf(from);
+					return {
+						bscWallet: from,
+						banWallet: parsedLog.args.ban_address,
+						amount: ethers.utils.formatEther(
+							BigNumber.from(parsedLog.args.amount)
+						),
+						wbanBalance: ethers.utils.formatEther(wbanBalance),
+						hash: log.transactionHash,
+						date,
+						checkUserBalance: false,
+					};
+				})
+			);
+			events.forEach(async (swapEvent) => {
+				await this.handleSwapToBanEvents(swapEvent);
+			});
+			this.usersDepositsService.setLastBSCBlockProcessed(currentBlock);
+		} catch (err) {
+			this.log.error(`Couldn't process BSC blocks`, err);
+			throw err;
+		}
 	}
 
-	private async handleSwapToBanEvents(
-		swapEvent: SwapToBanEvent
-	): Promise<void> {
+	private async handleSwapToBanEvents(swap: SwapWBANToBan): Promise<void> {
 		this.log.debug(
-			`Detected a SwapToBan event. From: ${swapEvent.from}, to: ${
-				swapEvent.banAddress
-			}, amount: ${ethers.utils.formatEther(swapEvent.amount)}, hash: ${
-				swapEvent.hash
-			}`
+			`Detected a SwapToBan event. From: ${swap.bscWallet}, to: ${swap.banWallet}, amount: ${swap.amount}, hash: ${swap.hash}`
 		);
 		// notify listeners
-		this.listeners.forEach((listener) => listener(swapEvent));
+		this.listeners.forEach((listener) => listener(swap));
 	}
 
-	onSwapToBan(listener: SwapToBanEventListener): void {
+	onSwapToBAN(listener: SwapToBanEventListener): void {
 		this.listeners.push(listener);
 	}
 }

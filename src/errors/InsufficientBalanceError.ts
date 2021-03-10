@@ -1,6 +1,6 @@
 class InsufficientBalanceError extends Error {
-	constructor() {
-		super();
+	constructor(message: string) {
+		super(message);
 		Object.setPrototypeOf(this, InsufficientBalanceError.prototype);
 	}
 }

@@ -24,13 +24,21 @@ const log: Logger = new Logger({
 });
 
 export default {
-	BananoUsersDepositsWallet: process.env.BANANO_USERS_DEPOSITS_WALLET ?? "",
+	BananoUsersDepositsHotWallet:
+		process.env.BANANO_USERS_DEPOSITS_HOT_WALLET ?? "",
+	BananoUsersDepositsColdWallet:
+		process.env.BANANO_USERS_DEPOSITS_COLD_WALLET ?? "",
 	BananoSeed: process.env.BANANO_SEED ?? "",
 	BananoSeedIdx: Number.parseInt(process.env.BANANO_SEED_INDEX, 10) ?? 0,
 	BananoRepresentative: process.env.BANANO_REPRESENTATIVE ?? "",
 	BananoWebSocketsAPI: process.env.BANANO_WS_API ?? "",
+	BananoRPCAPI: process.env.BANANO_RPC_API ?? "",
 	BananoPendingTransactionsThreadEnabled:
 		process.env.BANANO_PENDING_TXN_THREAD ?? true,
+	BananoUsersDepositsHotWalletMinimum:
+		process.env.BANANO_USERS_DEPOSITS_HOT_WALLET_MIN ?? "0",
+	BananoUsersDepositsHotWalletToColdWalletRatio:
+		process.env.BANANO_USERS_DEPOSITS_HOT_WALLET_TO_COLD_WALLET_RATIO ?? "0.2",
 
 	BinanceSmartChainJsonRpc: process.env.BSC_JSON_RPC_URL ?? "",
 	BinanceSmartChainBlockExplorerUrl: process.env.BSC_BLOCK_EXPLORER_URL ?? "",

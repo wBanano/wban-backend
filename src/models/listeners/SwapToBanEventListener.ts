@@ -1,3 +1,3 @@
-import SwapToBanEvent from "../events/SwapToBanEvent";
+import SwapWBANToBan from "../operations/SwapWBANToBan";
 
-export declare type SwapToBanEventListener = (event: SwapToBanEvent) => void;
+export declare type SwapToBanEventListener = (swap: SwapWBANToBan) => void;

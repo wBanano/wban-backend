@@ -1,20 +1,20 @@
 import { Logger } from "tslog";
-import Redis from "ioredis";
+import IORedis from "ioredis";
 import Redlock from "redlock";
-import { ethers, BigNumber } from "ethers";
+import { BigNumber } from "ethers";
 import { UsersDepositsStorage } from "./UsersDepositsStorage";
-import SwapToBanEvent from "../models/events/SwapToBanEvent";
+import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 import config from "../config";
 
 class RedisUsersDepositsStorage implements UsersDepositsStorage {
-	private redis: Redis;
+	private redis: IORedis.Redis;
 
 	private redlock: Redlock;
 
 	private log: Logger = config.Logger.getChildLogger();
 
 	constructor() {
-		this.redis = new Redis({ host: config.RedisHost });
+		this.redis = new IORedis({ host: config.RedisHost });
 		this.redlock = new Redlock([this.redis], {
 			// the expected clock drift; for more details
 			// see http://redis.io/topics/distlock
@@ -32,23 +32,29 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	}
 
 	async getUserAvailableBalance(from: string): Promise<BigNumber> {
-		const rawAmount: string = await this.redis.get(`deposits:${from}`);
-		if (rawAmount === null) {
-			return BigNumber.from(0);
-		}
-		return BigNumber.from(rawAmount);
+		return this.redlock
+			.lock(`locks:deposits:${from}`, 1_000)
+			.then(async (lock) => {
+				const rawAmount: string = await this.redis.get(`deposits:${from}`);
+				if (rawAmount === null) {
+					return BigNumber.from(0);
+				}
+				// unlock resource when done
+				await lock.unlock().catch((err) => this.log.error(err));
+				return BigNumber.from(rawAmount);
+			});
 	}
 
 	async lockBalance(from: string): Promise<void> {
-		return this.redis.set(`locks:balance:${from}`, "1");
+		this.redis.set(`locks:balance:${from}`, "1");
 	}
 
 	async unlockBalance(from: string): Promise<void> {
-		return this.redis.del(`locks:balance:${from}`);
+		this.redis.del(`locks:balance:${from}`);
 	}
 
 	async isBalanceLocked(from: string): Promise<boolean> {
-		return (await this.redis.exists(`locks:balance:${from}`)) === "1";
+		return (await this.redis.exists(`locks:balance:${from}`)) === 1;
 	}
 
 	async hasPendingClaim(banAddress: string): Promise<boolean> {
@@ -148,9 +154,11 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	async storeUserWithdrawal(
 		from: string,
 		amount: BigNumber,
-		sig: string
+		date: string
 	): Promise<void> {
-		this.log.info(`Storing user withdrawal to: ${from}, amount: ${amount} BAN`);
+		this.log.info(
+			`Storing user withdrawal to: ${from}, date: ${date}, amount: ${amount} BAN`
+		);
 		this.redlock.lock(`locks:deposits:${from}`, 1_000).then(async (lock) => {
 			let rawBalance: string | null;
 			try {
@@ -166,10 +174,10 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 				await this.redis
 					.multi()
 					.set(`deposits:${from}`, balance.toString())
-					.sadd(`txn:${from}`, sig)
+					.sadd(`txn:${from}`, `${date}`)
 					.exec();
 				this.log.info(
-					`Stored user withdrawal from: ${from}, amount: ${amount} BAN, sig: ${sig}`
+					`Stored user withdrawal from: ${from}, date: ${date}, amount: ${amount} BAN`
 				);
 			} catch (err) {
 				this.log.error(err);
@@ -186,20 +194,13 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		hash: string
 	): Promise<void> {
 		this.log.info(`Storing swap of ${amount} BAN for user ${from}`);
-		this.redlock
+		await this.redlock
 			.lock(`locks:swaps:ban-to-wban:${from}`, 1_000)
 			.then(async (lock) => {
-				let rawBalance: string | null;
 				try {
-					rawBalance = await this.redis.get(`deposits:${from}`);
-					let balance: BigNumber;
-					if (rawBalance) {
-						balance = BigNumber.from(rawBalance);
-					} else {
-						balance = BigNumber.from(0);
-					}
-					balance = balance.sub(amount);
-
+					const balance = (await this.getUserAvailableBalance(from)).sub(
+						amount
+					);
 					await this.redis
 						.multi()
 						.set(`deposits:${from}`, balance.toString())
@@ -217,11 +218,28 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			});
 	}
 
-	async containsTransaction(from: string, hash: string): Promise<boolean> {
+	async containsUserDepositTransaction(
+		from: string,
+		hash: string
+	): Promise<boolean> {
 		this.log.info(
-			`Checking if transaction from ${from} with hash ${hash} was already processed...`
+			`Checking if user deposit transaction from ${from} with hash ${hash} was already processed...`
 		);
 		const isAlreadyStored = await this.redis.sismember(`txn:${from}`, hash);
+		return isAlreadyStored === 1;
+	}
+
+	async containsUserWithdrawalRequest(
+		from: string,
+		date: string
+	): Promise<boolean> {
+		this.log.info(
+			`Checking if user withdrawal request from ${from} at ${date} was already processed...`
+		);
+		const isAlreadyStored = await this.redis.sismember(
+			`txn:${from}`,
+			`${date}`
+		);
 		return isAlreadyStored === 1;
 	}
 
@@ -234,25 +252,23 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	}
 
 	async setLastBSCBlockProcessed(block: number): Promise<void> {
-		return this.redis.set("bsc:blocks:latest", block.toString());
+		this.redis.set("bsc:blocks:latest", block.toString());
 	}
 
-	async storeUserSwapToBan(event: SwapToBanEvent): Promise<void> {
-		await this.redis.sadd(`swaps:wban-to-ban:${event.from}`, event.hash);
+	async storeUserSwapToBan(swap: SwapWBANToBan): Promise<void> {
+		await this.redis.sadd(`swaps:wban-to-ban:${swap.bscWallet}`, swap.hash);
 		this.log.info(
-			`Stored user swap for ${event.from} from ${ethers.utils.formatEther(
-				event.amount
-			)} wBAN to BAN`
+			`Stored user swap for ${swap.bscWallet} from ${swap.amount} wBAN to BAN`
 		);
 	}
 
-	async swapToBanWasAlreadyDone(event: SwapToBanEvent): Promise<boolean> {
+	async swapToBanWasAlreadyDone(swap: SwapWBANToBan): Promise<boolean> {
 		this.log.info(
-			`Checking if swap from ${event.from} with hash ${event.hash} was already processed...`
+			`Checking if swap from ${swap.bscWallet} with hash ${swap.hash} was already processed...`
 		);
 		const isAlreadyProcessed = await this.redis.sismember(
-			`swaps:wban-to-ban:${event.from}`,
-			event.hash
+			`swaps:wban-to-ban:${swap.bscWallet}`,
+			swap.hash
 		);
 		return isAlreadyProcessed === 1;
 	}

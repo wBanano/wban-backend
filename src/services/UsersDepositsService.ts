@@ -1,9 +1,9 @@
 import { Logger } from "tslog";
-import { ethers, BigNumber } from "ethers";
+import { BigNumber } from "ethers";
 import config from "../config";
 import { UsersDepositsStorage } from "../storage/UsersDepositsStorage";
-import SwapToBanEvent from "../models/events/SwapToBanEvent";
-import BalanceLockedError from "../errors/BalanceLockedError";
+import Withdrawal from "../models/operations/Withdrawal";
+import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 
 class UsersDepositsService {
 	private usersDepositsStorage: UsersDepositsStorage;
@@ -19,17 +19,6 @@ class UsersDepositsService {
 			from
 		);
 		return balance;
-	}
-
-	async lockBalance(from: string): Promise<void> {
-		if (await this.usersDepositsStorage.isBalanceLocked(from)) {
-			throw new BalanceLockedError();
-		}
-		return this.usersDepositsStorage.lockBalance(from);
-	}
-
-	async unlockBalance(from: string): Promise<void> {
-		return this.usersDepositsStorage.unlockBalance(from);
 	}
 
 	async hasPendingClaim(banAddress: string): Promise<boolean> {
@@ -64,9 +53,11 @@ class UsersDepositsService {
 		hash: string
 	): Promise<void> {
 		// check if the transaction wasn't already ingested!
-		if (await this.usersDepositsStorage.containsTransaction(from, hash)) {
+		if (
+			await this.usersDepositsStorage.containsUserDepositTransaction(from, hash)
+		) {
 			this.log.warn(
-				`Transaction ${hash} from ${from} was already processed. Skipping it...`
+				`User deposit transaction ${hash} from ${from} was already processed. Skipping it...`
 			);
 			return;
 		}
@@ -74,13 +65,31 @@ class UsersDepositsService {
 		this.usersDepositsStorage.storeUserDeposit(from, amount, hash);
 	}
 
+	async containsUserWithdrawalRequest(
+		withdrawal: Withdrawal
+	): Promise<boolean> {
+		return this.usersDepositsStorage.containsUserWithdrawalRequest(
+			withdrawal.bscWallet,
+			withdrawal.date
+		);
+	}
+
 	async storeUserWithdrawal(
 		from: string,
 		amount: BigNumber,
-		sig: string
+		date: string
 	): Promise<void> {
+		// check if the transaction wasn't already ingested!
+		if (
+			await this.usersDepositsStorage.containsUserWithdrawalRequest(from, date)
+		) {
+			this.log.warn(
+				`User withdrawal request from ${from} with date ${date} was already processed. Skipping it...`
+			);
+			return;
+		}
 		// store the user withdrawal
-		this.usersDepositsStorage.storeUserWithdrawal(from, amount, sig);
+		this.usersDepositsStorage.storeUserWithdrawal(from, amount, date);
 	}
 
 	async storeUserSwap(
@@ -99,11 +108,11 @@ class UsersDepositsService {
 		return this.usersDepositsStorage.setLastBSCBlockProcessed(block);
 	}
 
-	async swapToBan(event: SwapToBanEvent): Promise<void> {
+	async swapToBan(event: SwapWBANToBan): Promise<void> {
 		return this.usersDepositsStorage.storeUserSwapToBan(event);
 	}
 
-	async swapToBanWasAlreadyDone(event: SwapToBanEvent): Promise<boolean> {
+	async swapToBanWasAlreadyDone(event: SwapWBANToBan): Promise<boolean> {
 		return this.usersDepositsStorage.swapToBanWasAlreadyDone(event);
 	}
 }

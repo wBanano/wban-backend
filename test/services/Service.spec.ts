@@ -2,7 +2,6 @@ import chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 import * as sinon from "ts-sinon";
 import sinonChai from "sinon-chai";
-import config from "../../src/config";
 import { UsersDepositsService } from "../../src/services/UsersDepositsService";
 import { Service } from "../../src/services/Service";
 import { ClaimResponse } from "../../src/models/responses/ClaimResponse";
@@ -10,6 +9,12 @@ import { BigNumber, ethers } from "ethers";
 import { BSC } from "../../src/BSC";
 import InvalidOwner from "../../src/errors/InvalidOwner";
 import InvalidSignatureError from "../../src/errors/InvalidSignatureError";
+import { Banano } from "../../src/Banano";
+import ProcessingQueue from "../../src/services/queuing/ProcessingQueue";
+import PendingWithdrawalsQueue from "../../src/services/queuing/PendingWithdrawalsQueue";
+import RepeatableQueue from "../../src/services/queuing/RepeatableQueue";
+import BananoUserWithdrawal from "../../src/models/operations/BananoUserWithdrawal";
+import config from "../../src/config";
 
 const { expect } = chai;
 chai.use(sinonChai);
@@ -17,14 +22,28 @@ chai.use(chaiAsPromised);
 
 describe("Main Service", () => {
 	let svc: Service = null;
-	let depositsService: any = null;
-	let bsc: any = null;
+	let depositsService: sinon.StubbedInstance<UsersDepositsService> = null;
+	let processingQueue: sinon.StubbedInstance<ProcessingQueue> = null;
+	let pendingWithdrawalsQueue: sinon.StubbedInstance<PendingWithdrawalsQueue> = null;
+	let repeatableQueue: sinon.StubbedInstance<RepeatableQueue> = null;
+	let bsc: sinon.StubbedInstance<BSC> = null;
+	let banano: sinon.StubbedInstance<Banano> = null;
 
 	beforeEach(async () => {
 		depositsService = sinon.stubInterface<UsersDepositsService>();
+		processingQueue = sinon.stubInterface<ProcessingQueue>();
+		repeatableQueue = sinon.stubInterface<RepeatableQueue>();
+		pendingWithdrawalsQueue = sinon.stubInterface<PendingWithdrawalsQueue>();
 		bsc = sinon.stubInterface<BSC>();
-		svc = new Service(depositsService);
+		banano = sinon.stubInterface<Banano>();
+		svc = new Service(
+			depositsService,
+			processingQueue,
+			pendingWithdrawalsQueue,
+			repeatableQueue
+		);
 		svc.bsc = bsc;
+		svc.banano = banano;
 	});
 
 	it("Checks properly signatures", async () => {
@@ -54,7 +73,13 @@ describe("Main Service", () => {
 		).to.be.false;
 
 		await expect(
-			svc.swap(from, 10, bscWallet, badSignature)
+			svc.processSwapToWBAN({
+				from,
+				amountStr: 10,
+				bscWallet,
+				date: new Date().toISOString(),
+				signature: badSignature,
+			})
 		).to.eventually.be.rejectedWith(InvalidSignatureError);
 	});
 
@@ -65,21 +90,23 @@ describe("Main Service", () => {
 			const bscWallet = "0xec410E9F2756C30bE4682a7E29918082Adc12B55";
 			const signature =
 				"0x521c2e1ae5e12da983b4a30bba29a6af4a24317c9378b124f5f5c2b69d96e945082322939fbdd1d8c351c218485934bbd6c997ae6d4066cbf81a24321cf18f551c";
+
 			depositsService.hasClaim
 				.withArgs(banWallet, bscWallet)
 				.onFirstCall()
-				.returns(Promise.resolve(false))
+				.resolves(false)
 				.onSecondCall()
-				.returns(Promise.resolve(true));
+				.resolves(true);
 			depositsService.hasPendingClaim
 				.withArgs(banWallet)
 				.onFirstCall()
-				.returns(Promise.resolve(true))
+				.resolves(false)
 				.onSecondCall()
-				.returns(Promise.resolve(false));
+				.resolves(true);
 			depositsService.storePendingClaim
 				.withArgs(banWallet, bscWallet)
 				.returns(Promise.resolve(true));
+
 			expect(await svc.claim(banWallet, bscWallet, signature)).to.equal(
 				ClaimResponse.Ok
 			);
@@ -103,15 +130,15 @@ describe("Main Service", () => {
 
 			depositsService.hasClaim
 				.withArgs(banWallet, bscWallet1)
-				.returns(Promise.resolve(false))
+				.resolves(false)
 				.withArgs(banWallet, bscWallet2)
-				.returns(Promise.resolve(false));
+				.resolves(false);
 			depositsService.hasPendingClaim
 				.withArgs(banWallet)
 				.onFirstCall()
-				.returns(Promise.resolve(true))
+				.resolves(false)
 				.onSecondCall()
-				.returns(Promise.resolve(false));
+				.resolves(true);
 			depositsService.storePendingClaim
 				.withArgs(banWallet, bscWallet1)
 				.returns(Promise.resolve(true));
@@ -145,28 +172,121 @@ describe("Main Service", () => {
 
 			depositsService.getUserAvailableBalance
 				.withArgs(banWallet)
-				.returns(Promise.resolve(amount));
+				.resolves(amount);
 			depositsService.hasClaim
 				.withArgs(banWallet, bscWallet1)
-				.returns(Promise.resolve(true))
+				.resolves(true)
 				.withArgs(banWallet, bscWallet2)
-				.returns(Promise.resolve(false));
+				.resolves(false);
 			bsc.mintTo
 				.withArgs(bscWallet1, amount)
-				.returns(Promise.resolve("0xCAFEBABE"))
+				.resolves({ hash: "0xCAFEBABE", wbanBalance: BigNumber.from(0) })
 				.withArgs(bscWallet2, amount)
-				.returns(Promise.resolve("0xCAFEBABE"));
+				.resolves({ hash: "0xCAFEBABE", wbanBalance: BigNumber.from(0) });
 
 			// legit user should be able to swap
-			expect(await svc.swap(banWallet, 10, bscWallet1, signature1)).to.equal(
-				"0xCAFEBABE"
-			);
+			const { hash, wbanBalance } = await svc.processSwapToWBAN({
+				from: banWallet,
+				amountStr: 10,
+				bscWallet: bscWallet1,
+				date: new Date().toISOString(),
+				signature: signature1,
+			});
+			expect(hash).to.equal("0xCAFEBABE");
+			expect(ethers.utils.formatEther(wbanBalance)).to.equal("0.0");
 
 			// hacker trying to swap funds from a wallet he doesn't own should be able to do it
 			// expect(await svc.swap(banWallet, 10, bscWallet2, signature2));
 			await expect(
-				svc.swap(banWallet, 10, bscWallet2, signature2)
+				svc.processSwapToWBAN({
+					from: banWallet,
+					amountStr: 10,
+					bscWallet: bscWallet2,
+					date: new Date().toISOString(),
+					signature: signature2,
+				})
 			).to.eventually.be.rejectedWith(InvalidOwner);
+		});
+	});
+
+	describe("Withdrawals", () => {
+		it("Checks if a big withdrawal is put in pending withdrawals", async () => {
+			const banWallet =
+				"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
+			const bscWallet = "0xec410E9F2756C30bE4682a7E29918082Adc12B55";
+			const withdrawal: BananoUserWithdrawal = {
+				banWallet,
+				amount: "150",
+				bscWallet,
+				signature:
+					"0xc7f21062ef2c672e8cc77cecfdf532f39bcf6791e7f41266491fe649bedeaec9443e963400882d6dc46c8e10c033528a7bc5a517e136296d01be339baf6e9efb1b",
+				date: "2020-04-01",
+				checkUserBalance: true,
+			};
+			depositsService.containsUserWithdrawalRequest
+				.withArgs(withdrawal)
+				.onFirstCall()
+				.resolves(false);
+			depositsService.isClaimed.withArgs(banWallet).resolves(true);
+			depositsService.hasClaim.withArgs(banWallet, bscWallet).resolves(true);
+			depositsService.getUserAvailableBalance
+				.withArgs(banWallet)
+				.resolves(ethers.utils.parseEther("200"));
+			banano.getBalance
+				.withArgs(config.BananoUsersDepositsHotWallet)
+				.resolves(ethers.utils.parseEther("100"));
+			// make the withdrawal...
+			await svc.processWithdrawBAN(withdrawal);
+			// ... expect it to be added to the pending withdrawals queue
+			expect(pendingWithdrawalsQueue.addPendingWithdrawal).to.have.been
+				.calledOnce;
+			// ... and that no withdrawal was processed
+			expect(banano.sendBan).to.have.not.been.called;
+			expect(depositsService.storeUserWithdrawal).to.have.not.been.called;
+		});
+	});
+
+	describe("Idempotence", () => {
+		it("Checks if a user withdrawal request is not processed twice", async () => {
+			const banWallet =
+				"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
+			const bscWallet = "0xec410E9F2756C30bE4682a7E29918082Adc12B55";
+			const withdrawal: BananoUserWithdrawal = {
+				banWallet,
+				amount: "150",
+				bscWallet,
+				signature:
+					"0xc7f21062ef2c672e8cc77cecfdf532f39bcf6791e7f41266491fe649bedeaec9443e963400882d6dc46c8e10c033528a7bc5a517e136296d01be339baf6e9efb1b",
+				date: "2020-04-01",
+				checkUserBalance: true,
+			};
+			depositsService.containsUserWithdrawalRequest
+				.withArgs(withdrawal)
+				// accept to ingest the transaction the first time
+				.onFirstCall()
+				.resolves(false)
+				// reject it the second time
+				.onSecondCall()
+				.resolves(true);
+			depositsService.isClaimed.withArgs(banWallet).resolves(true);
+			depositsService.hasClaim.withArgs(banWallet, bscWallet).resolves(true);
+			depositsService.getUserAvailableBalance
+				.withArgs(banWallet)
+				.resolves(ethers.utils.parseEther("200"));
+			banano.getBalance
+				.withArgs(config.BananoUsersDepositsHotWallet)
+				.resolves(ethers.utils.parseEther("300"));
+			// call the service twice...
+			await svc.processWithdrawBAN(withdrawal);
+			await expect(
+				svc.processWithdrawBAN(withdrawal)
+			).to.eventually.be.rejectedWith(
+				"Can't withdraw BAN as the transaction was already processed"
+			);
+			// ... and expect only one withdrawal
+			expect(banano.sendBan).to.have.been.calledOnce;
+			// ... to make sure the transaction is not stored twice but once!
+			expect(depositsService.storeUserWithdrawal).to.have.been.calledOnce;
 		});
 	});
 });

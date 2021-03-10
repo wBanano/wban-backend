@@ -30,18 +30,21 @@ describe("Users Deposits Service", () => {
 		const address = "0xCAFEBABE";
 		const amount = BigNumber.from(123);
 		const hash = "<the-hash>";
-		// accept to ingest the transaction the first time
-		storage.containsTransaction.onCall(0).returns(Promise.resolve(true));
-		// reject it the second time
-		storage.containsTransaction.onCall(1).returns(Promise.resolve(false));
-		storage.storeUserDeposit.returns(Promise.resolve());
+		storage.containsUserDepositTransaction
+			// accept to ingest the transaction the first time
+			.onFirstCall()
+			.resolves(true)
+			// reject it the second time
+			.onSecondCall()
+			.resolves(false);
+		storage.containsUserDepositTransaction;
+		storage.storeUserDeposit.resolves();
 		// call the service twice...
 		await svc.storeUserDeposit(address, amount, hash);
 		await svc.storeUserDeposit(address, amount, hash);
-		expect(storage.containsTransaction).to.have.been.calledTwice.and.calledWith(
-			address,
-			hash
-		);
+		expect(
+			storage.containsUserDepositTransaction
+		).to.have.been.calledTwice.and.calledWith(address, hash);
 		// ... to make sure the transaction is not store twice but once!
 		expect(storage.storeUserDeposit).to.have.been.calledOnce;
 	});

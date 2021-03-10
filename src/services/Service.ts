@@ -1,38 +1,113 @@
 import { Logger } from "tslog";
 import { BigNumber, ethers } from "ethers";
-import SwapToBanEvent from "../models/events/SwapToBanEvent";
+import { Processor } from "bullmq";
 import { Banano } from "../Banano";
 import config from "../config";
 import { UsersDepositsService } from "./UsersDepositsService";
 import InvalidSignatureError from "../errors/InvalidSignatureError";
 import InvalidOwner from "../errors/InvalidOwner";
 import InsufficientBalanceError from "../errors/InsufficientBalanceError";
+import InsufficientHotWalletBalanceError from "../errors/InsufficientHotWalletBalanceError";
 import { ClaimResponse } from "../models/responses/ClaimResponse";
 import { BSC } from "../BSC";
+import ProcessingQueue from "./queuing/ProcessingQueue";
+import PendingWithdrawalsQueue from "./queuing/PendingWithdrawalsQueue";
+import { OperationsNames } from "../models/operations/Operation";
+import Withdrawal from "../models/operations/Withdrawal";
+import BananoUserWithdrawal from "../models/operations/BananoUserWithdrawal";
+import SwapBanToWBAN from "../models/operations/SwapBanToWBAN";
+import SwapWBANToBan from "../models/operations/SwapWBANToBan";
+import RepeatableQueue from "./queuing/RepeatableQueue";
 
 class Service {
-	private banano: Banano;
+	banano: Banano;
 
 	public bsc: BSC;
 
 	private usersDepositsService: UsersDepositsService;
 
+	private processingQueue: ProcessingQueue;
+
+	private pendingWithdrawalsQueue: PendingWithdrawalsQueue;
+
+	private repeatableQueue: RepeatableQueue;
+
 	private log: Logger = config.Logger.getChildLogger();
 
-	constructor(usersDepositsService: UsersDepositsService) {
+	constructor(
+		usersDepositsService: UsersDepositsService,
+		processingQueue: ProcessingQueue,
+		pendingWithdrawalsQueue: PendingWithdrawalsQueue,
+		repeatableQueue: RepeatableQueue
+	) {
+		this.processingQueue = processingQueue;
+		this.pendingWithdrawalsQueue = pendingWithdrawalsQueue;
+		this.repeatableQueue = repeatableQueue;
 		this.banano = new Banano(
-			config.BananoUsersDepositsWallet,
+			config.BananoUsersDepositsHotWallet,
+			config.BananoUsersDepositsColdWallet,
 			config.BananoSeed,
 			config.BananoSeedIdx,
 			config.BananoRepresentative,
-			usersDepositsService
+			usersDepositsService,
+			this.processingQueue
 		);
-		this.bsc = new BSC(usersDepositsService);
-		this.bsc.onSwapToBan((event: SwapToBanEvent) => this.swapToBan(event));
+		this.processingQueue.registerProcessor(
+			OperationsNames.BananoWithdrawal,
+			async (job) => {
+				const withdrawal: BananoUserWithdrawal = job.data;
+				const processor = this.withdrawalProcessor(true, withdrawal.signature);
+				return processor(job);
+			}
+		);
+		this.processingQueue.registerProcessor(
+			OperationsNames.SwapToWBAN,
+			async (job) => {
+				const swap: SwapBanToWBAN = job.data;
+				const { hash, wbanBalance } = await this.processSwapToWBAN(swap);
+				return {
+					banWallet: swap.from,
+					swapped: swap.amountStr,
+					balance: ethers.utils.formatEther(
+						await this.usersDepositsService.getUserAvailableBalance(swap.from)
+					),
+					wbanBalance: ethers.utils.formatEther(wbanBalance),
+					transaction: hash,
+					transactionLink: `${config.BinanceSmartChainBlockExplorerUrl}/tx/${hash}`,
+				};
+			}
+		);
+		this.processingQueue.registerProcessor(
+			OperationsNames.SwapToBAN,
+			async (job) => {
+				const swap: SwapWBANToBan = job.data;
+				const { hash, wbanBalance } = await this.processSwapToBAN(swap);
+				return {
+					banWallet: swap.banWallet,
+					swapped: swap.amount,
+					balance: ethers.utils.formatEther(
+						await this.usersDepositsService.getUserAvailableBalance(
+							swap.banWallet
+						)
+					),
+					wbanBalance,
+					transaction: hash,
+					transactionLink: `${config.BinanceSmartChainBlockExplorerUrl}/tx/${hash}`,
+				};
+			}
+		);
+		this.pendingWithdrawalsQueue.registerProcessor(
+			this.withdrawalProcessor(false)
+		);
+		this.bsc = new BSC(usersDepositsService, this.repeatableQueue);
+		this.bsc.onSwapToBAN((swap: SwapWBANToBan) => this.swapToBAN(swap));
 		this.usersDepositsService = usersDepositsService;
 	}
 
 	start(): void {
+		this.processingQueue.start();
+		this.pendingWithdrawalsQueue.start();
+		this.repeatableQueue.start();
 		this.banano.subscribeToBananoNotificationsForWallet();
 	}
 
@@ -60,7 +135,7 @@ class Service {
 			return ClaimResponse.AlreadyDone;
 		}
 		// check if there is a pending claim
-		if (await this.usersDepositsService.hasPendingClaim(banWallet)) {
+		if (!(await this.usersDepositsService.hasPendingClaim(banWallet))) {
 			return (await this.usersDepositsService.storePendingClaim(
 				banWallet,
 				bscWallet
@@ -72,12 +147,120 @@ class Service {
 		return ClaimResponse.InvalidOwner;
 	}
 
-	async swap(
+	async withdrawBAN(
+		banWallet: string,
+		amount: string,
+		bscWallet: string,
+		date: Date,
+		signature: string
+	): Promise<string> {
+		return this.processingQueue.addBananoUserWithdrawal({
+			banWallet,
+			amount,
+			bscWallet,
+			signature,
+			date: date.toISOString(),
+			checkUserBalance: true,
+		});
+	}
+
+	async processWithdrawBAN(
+		withdrawal: Withdrawal,
+		queuePendingWithdrawals = true,
+		signature?: string
+	): Promise<string> {
+		const { banWallet, amount, bscWallet, date } = withdrawal;
+
+		this.log.info(
+			`Processing user withdrawal request of "${amount}" BAN from wallet "${banWallet}"`
+		);
+
+		// check if request was already processed
+		if (
+			await this.usersDepositsService.containsUserWithdrawalRequest(withdrawal)
+		) {
+			this.log.warn(
+				`User withdrawal request to "${banWallet}" at ${date} was already processed`
+			);
+			throw new Error(
+				"Can't withdraw BAN as the transaction was already processed"
+			);
+		}
+
+		// verify signature
+		if (
+			signature &&
+			!this.checkSignature(
+				bscWallet,
+				signature,
+				`Withdraw ${amount} BAN to my wallet "${banWallet}"`
+			)
+		) {
+			throw new InvalidSignatureError();
+		}
+
+		if (!this.usersDepositsService.isClaimed(banWallet)) {
+			throw new Error(`Can't withdraw from unclaimed wallet ${banWallet}`);
+		} else if (!this.usersDepositsService.hasClaim(banWallet, bscWallet)) {
+			throw new Error("Can't withdraw from another BSC wallet");
+		}
+
+		const withdrawnAmount: BigNumber = ethers.utils.parseEther(amount);
+
+		if (withdrawal.checkUserBalance) {
+			// check if deposits are greater than or equal to amount to withdraw
+			const availableBalance: BigNumber = await this.usersDepositsService.getUserAvailableBalance(
+				banWallet
+			);
+			if (!availableBalance.gte(withdrawnAmount)) {
+				const message = `User "${banWallet}" has not deposited enough BAN for a withdrawal of ${amount} BAN. Deposited balance is: ${ethers.utils.formatEther(
+					availableBalance
+				)} BAN`;
+				this.log.warn(message);
+				throw new InsufficientBalanceError(message);
+			}
+		}
+
+		// send the BAN to the user
+		const { pending, hash } = await this.eventuallySendBan(
+			withdrawal,
+			queuePendingWithdrawals
+		);
+
+		if (pending) {
+			return "";
+		}
+
+		// decrease user deposits
+		if (withdrawal.checkUserBalance) {
+			await this.usersDepositsService.storeUserWithdrawal(
+				banWallet,
+				withdrawnAmount,
+				date
+			);
+		}
+		this.log.info(`Withdrawed ${amount} BAN to "${banWallet}"`);
+		return hash;
+	}
+
+	async swapToWBAN(
 		from: string,
 		amountStr: number,
 		bscWallet: string,
+		date: Date,
 		signature: string
 	): Promise<string> {
+		return this.processingQueue.addSwapToWBan({
+			from,
+			amountStr,
+			bscWallet,
+			signature,
+			date: date.toISOString(),
+		});
+	}
+
+	async processSwapToWBAN(swap: SwapBanToWBAN): Promise<any> {
+		const { from, amountStr, bscWallet, signature } = swap;
 		// verify signature
 		if (
 			!this.checkSignature(
@@ -100,96 +283,45 @@ class Service {
 			from
 		);
 		if (!availableBalance.gte(amount)) {
-			this.log.warn(
-				`User ${from} has not deposited enough BAN for a swap of ${amount}. Deposited balance is: ${availableBalance}`
-			);
-			throw new InsufficientBalanceError();
+			const message = `User "${from}" has not deposited enough BAN for a swap of ${amountStr} BAN. Deposited balance is: ${ethers.utils.formatEther(
+				availableBalance
+			)} BAN`;
+			this.log.warn(message);
+			throw new InsufficientBalanceError(message);
 		}
 
-		try {
-			// lock user balance to prevent other concurrent swaps
-			await this.usersDepositsService.lockBalance(from);
-			// mint wBAN tokens
-			const hash = await this.bsc.mintTo(bscWallet, amount);
-			// decrease user deposits
-			// TODO: store signature?
-			await this.usersDepositsService.storeUserSwap(from, amount, hash);
-			return hash;
-		} finally {
-			// unlock user balance
-			await this.usersDepositsService.unlockBalance(from);
-		}
+		// mint wBAN tokens
+		const { hash, wbanBalance } = await this.bsc.mintTo(bscWallet, amount);
+		// decrease user deposits
+		// TODO: store signature?
+		await this.usersDepositsService.storeUserSwap(from, amount, hash);
+		return { hash, wbanBalance };
 	}
 
-	async withdrawBAN(
-		to: string,
-		amountStr: number,
-		bscWallet: string,
-		signature: string
-	): Promise<string> {
-		// verify signature
-		if (
-			!this.checkSignature(
-				bscWallet,
-				signature,
-				`Withdraw ${amountStr} BAN to my wallet "${to}"`
-			)
-		) {
-			throw new InvalidSignatureError();
-		}
+	async swapToBAN(swap: SwapWBANToBan): Promise<string> {
+		return this.processingQueue.addSwapToBan(swap);
+	}
 
-		if (!this.usersDepositsService.isClaimed(to)) {
-			throw new Error(`Can't withdraw from unclaimed wallet ${to}`);
-		} else if (!this.usersDepositsService.hasClaim(to, bscWallet)) {
-			throw new Error("Can't withdraw from another BSC wallet");
-		}
-
-		const amount: BigNumber = ethers.utils.parseEther(amountStr.toString());
-
-		// check if deposits are greater than or equal to amount to swap
-		const availableBalance: BigNumber = await this.usersDepositsService.getUserAvailableBalance(
-			to
+	async processSwapToBAN(swap: SwapWBANToBan): Promise<any> {
+		this.log.info(
+			`Swapping ${swap.amount} wBAN to BAN (txn: ${swap.hash}) into wallet "${swap.banWallet}"...`
 		);
-		if (!availableBalance.gte(amount)) {
-			this.log.warn(
-				`User ${to} has not deposited enough BAN for a withdrawal of ${amount}. Deposited balance is: ${availableBalance}`
-			);
-			throw new InsufficientBalanceError();
+		// check if the BAN were already sent
+		if (await this.usersDepositsService.swapToBanWasAlreadyDone(swap)) {
+			this.log.warn(`Swap for transaction "${swap.hash}" was already done.`);
+			return {
+				hash: swap.hash,
+				wbanBalance: swap.wbanBalance,
+			};
 		}
-
-		try {
-			// lock user balance to prevent other concurrent swaps
-			await this.usersDepositsService.lockBalance(to);
-			// send the BAN to the user
-			const hash = await this.banano.sendBan(to, amount);
-			// decrease user deposits
-			// TODO: store signature?
-			await this.usersDepositsService.storeUserWithdrawal(
-				to,
-				amount,
-				signature
-			);
-			return hash;
-		} finally {
-			// unlock user balance
-			await this.usersDepositsService.unlockBalance(to);
-		}
-	}
-
-	async swapToBan(event: SwapToBanEvent): Promise<void> {
-		try {
-			// check if the BAN were already sent
-			if (await this.usersDepositsService.swapToBanWasAlreadyDone(event)) {
-				this.log.warn(`Swap for ${event.hash} was already done.`);
-				return;
-			}
-			// send the BAN to the user
-			await this.banano.sendBan(event.banAddress, event.amount);
-			// store user swap from wBAN to BAN
-			await this.usersDepositsService.swapToBan(event);
-		} catch (err) {
-			this.log.error("Couldn't send BAN", err);
-		}
+		// send the BAN to the user
+		const { pending, hash } = await this.eventuallySendBan(swap, true);
+		// store user swap from wBAN to BAN
+		await this.usersDepositsService.swapToBan(swap);
+		return {
+			hash,
+			wbanBalance: swap.wbanBalance,
+		};
 	}
 
 	checkSignature(
@@ -206,6 +338,64 @@ class Service {
 			);
 		}
 		return author === sanitizedAddress;
+	}
+
+	private async eventuallySendBan(
+		withdrawal: Withdrawal,
+		queuePendingWithdrawals = false
+	): Promise<any> {
+		const amountStr = withdrawal.amount;
+		const amount: BigNumber = ethers.utils.parseEther(amountStr);
+		// check if hot wallet balance is greater than or equal to amount to withdraw
+		const hotWalletBalance: BigNumber = await this.banano.getBalance(
+			config.BananoUsersDepositsHotWallet
+		);
+		if (hotWalletBalance.lt(amount)) {
+			this.log.warn(
+				`Hot wallet balance of ${ethers.utils.formatEther(
+					hotWalletBalance
+				)} BAN is not enough to proceed with a withdrawal of ${amountStr} BAN. Adding a pending withdrawal to queue.`
+			);
+			if (queuePendingWithdrawals) {
+				this.pendingWithdrawalsQueue.addPendingWithdrawal(withdrawal);
+				return { pending: true };
+			}
+			throw new InsufficientHotWalletBalanceError(amount, hotWalletBalance);
+		}
+		// send the BAN to the user
+		const hash = await this.banano.sendBan(withdrawal.banWallet, amount);
+		return { pending: false, hash };
+	}
+
+	private withdrawalProcessor(
+		enqueue: boolean,
+		signature?: string
+	): Processor<Withdrawal, any, string> {
+		return async (job) => {
+			const withdrawal: Withdrawal = job.data;
+			const hash = await this.processWithdrawBAN(
+				withdrawal,
+				enqueue,
+				signature
+			);
+			if (hash) {
+				return {
+					banWallet: withdrawal.banWallet,
+					withdrawal: withdrawal.amount,
+					balance: ethers.utils.formatEther(
+						await this.usersDepositsService.getUserAvailableBalance(
+							withdrawal.banWallet
+						)
+					),
+					transaction: hash,
+				};
+				// eslint-disable-next-line no-else-return
+			} else if (!enqueue) {
+				throw new Error("Can't withdraw");
+			} else {
+				return "";
+			}
+		};
 	}
 }
 
