@@ -8,7 +8,6 @@ import config from "./config";
 import ProcessingQueue from "./services/queuing/ProcessingQueue";
 import BananoUserDeposit from "./models/operations/BananoUserDeposit";
 import { OperationsNames } from "./models/operations/Operation";
-import BananoUserWithdrawal from "./models/operations/BananoUserWithdrawal";
 
 class Banano {
 	private usersDepositsHotWallet: string;
@@ -240,7 +239,7 @@ class Banano {
 		hash: string
 	): Promise<void> {
 		this.log.info(
-			`Processing user deposit transaction "${hash}" from wallet ${sender}`
+			`Processing user deposit transaction "${hash}" from wallet "${sender}"`
 		);
 
 		// check if a pending claim is available
@@ -266,7 +265,7 @@ class Banano {
 			// record the user deposit
 			this.usersDepositsService.storeUserDeposit(sender, amount, hash);
 			await this.receiveTransaction(hash);
-			await this.eventuallySendToColdWallet();
+			await this.eventuallySendToColdWallet(amount);
 		}
 	}
 
@@ -285,7 +284,16 @@ class Banano {
 		}
 	}
 
-	private async eventuallySendToColdWallet() {
+	/**
+	 * Check if some of the deposited BAN should be send to cold wallet.
+	 *
+	 * This code will only send to cold wallet if the hot wallet has at
+	 * least ${config.BananoUsersDepositsHotWalletMinimum} BAN.
+	 * If so, then ${config.BananoUsersDepositsHotWalletToColdWalletRatio}%
+	 * will be kept in hot wallet, and the rest sent to the cold wallet.
+	 */
+	private async eventuallySendToColdWallet(deposit: BigNumber) {
+		this.log.debug(`User deposit: ${ethers.utils.formatEther(deposit)} BAN`);
 		// get balance of hot wallet
 		const hotWalletBalance: BigNumber = await this.getTotalBalance(
 			this.usersDepositsHotWallet
@@ -296,52 +304,36 @@ class Banano {
 		const minimumBanInHotWallet = ethers.utils.parseEther(
 			config.BananoUsersDepositsHotWalletMinimum
 		);
+		this.log.debug(
+			`Minimum to keep in hot wallet: ${ethers.utils.formatEther(
+				minimumBanInHotWallet
+			)} BAN`
+		);
 		// check if hot wallet minimum is reached
 		const amountAboveMinimum = hotWalletBalance.sub(minimumBanInHotWallet);
-		// if not, nothing has to be send to the cold wallet
+		this.log.debug(
+			`Amount above minimum: ${ethers.utils.formatEther(
+				amountAboveMinimum
+			)} BAN`
+		);
+		// if not, nothing has to be sent to the cold wallet
 		if (amountAboveMinimum.lte(BigNumber.from(0))) {
 			return;
 		}
-		// get balance of cold wallet
-		const coldWalletBalance: BigNumber = await this.getTotalBalance(
-			this.usersDepositsColdWallet
-		);
-		this.log.debug(
-			`Cold wallet balance: ${ethers.utils.formatEther(coldWalletBalance)} BAN`
-		);
-		// get total BAN deposited balance
-		const totalDeposits = hotWalletBalance.add(coldWalletBalance);
-		this.log.debug(
-			`Total deposits: ${ethers.utils.formatEther(totalDeposits)} BAN`
-		);
-		const ONE_HUNDRED = BigNumber.from(100);
-		// compute hot balance over total deposits
-		const hotRatio = hotWalletBalance.mul(ONE_HUNDRED).div(totalDeposits);
-		this.log.debug(`Hot ratio: ${hotRatio}`);
-		// retreive target ratio
+		// retreive hot wallet target ratio
 		const targetRatio = BigNumber.from(
 			config.BananoUsersDepositsHotWalletToColdWalletRatio
 		);
-		this.log.debug(`Target ratio: ${targetRatio}`);
-		// if above target ratio, send extra to cold wallet
-		if (hotRatio.gt(targetRatio)) {
-			// compute amount to send to cold wallet
-			let amount = totalDeposits
-				.mul(ONE_HUNDRED.sub(targetRatio))
-				.div(ONE_HUNDRED)
-				.sub(coldWalletBalance);
-			// check if enough BAN would be left in hot wallet
-			if (hotWalletBalance.sub(amount).lt(minimumBanInHotWallet)) {
-				amount = hotWalletBalance.sub(
-					ethers.utils.parseEther(config.BananoUsersDepositsHotWalletMinimum)
-				);
-			}
-			this.log.info(
-				`Sending ${ethers.utils.formatEther(amount)} BAN to cold wallet`
-			);
-			// send BAN to cold wallet
-			await this.sendBan(this.usersDepositsColdWallet, amount);
-		}
+		// compute how many BAN should be sent to cold wallet
+		const ONE_HUNDRED = BigNumber.from(100);
+		const amount = ONE_HUNDRED.sub(targetRatio)
+			.mul(amountAboveMinimum)
+			.div(ONE_HUNDRED);
+		this.log.info(
+			`Sending ${ethers.utils.formatEther(amount)} BAN to cold wallet`
+		);
+		// send BAN to cold wallet
+		await this.sendBan(this.usersDepositsColdWallet, amount);
 	}
 
 	// eslint-disable-next-line class-methods-use-this
