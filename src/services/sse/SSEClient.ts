@@ -21,6 +21,10 @@ class SSEClient {
 			"X-Accel-Buffering": "no",
 		};
 		this.context.writeHead(200, headers);
+		this.send({
+			type: "ping",
+			data: "ping",
+		});
 	}
 
 	public send(message: SSEMessage): void {

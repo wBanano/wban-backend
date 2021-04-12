@@ -148,6 +148,14 @@ app.get("/events/:ban_wallet", async (req: Request, res: Response) => {
 	req.on("close", () => {
 		sse.delete(id);
 	});
+	setInterval(
+		() =>
+			sse.broadcast({
+				type: "ping",
+				data: "ping",
+			}),
+		15_000
+	);
 });
 
 const jobListener: JobListener = {
