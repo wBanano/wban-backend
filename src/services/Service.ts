@@ -393,7 +393,16 @@ class Service {
 			} else if (!enqueue) {
 				throw new Error("Can't withdraw");
 			} else {
-				return "";
+				return {
+					banWallet: withdrawal.banWallet,
+					withdrawal: withdrawal.amount,
+					balance: ethers.utils.formatEther(
+						await this.usersDepositsService.getUserAvailableBalance(
+							withdrawal.banWallet
+						)
+					),
+					transaction: "",
+				};
 			}
 		};
 	}

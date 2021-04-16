@@ -68,7 +68,7 @@ class Banano {
 		banano.setBananodeApiUrl(config.BananoRPCAPI);
 		// check every 5 miinutes if transactions were missed from the WebSockets API
 		if (config.BananoPendingTransactionsThreadEnabled === true) {
-			cron.schedule("*/5 * * * *", () => {
+			cron.schedule("* * * * *", () => {
 				this.processPendingTransactions(usersDepositsHotWallet);
 			});
 		} else {
@@ -194,6 +194,7 @@ class Banano {
 			// eslint-disable-next-line no-restricted-syntax
 			for (const hash of transactionsHashes) {
 				const transaction = walletPendingTransactions[hash];
+				this.log.debug(`Transaction is: ${JSON.stringify(transaction)}`);
 				const { amount, sender } = transaction;
 				const banAmount: BigNumber = BigNumber.from(
 					amount.substring(0, amount.length - 11)

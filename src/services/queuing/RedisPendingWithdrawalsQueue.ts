@@ -56,7 +56,7 @@ class RedisPendingWithdrawalsQueue implements PendingWithdrawalsQueue {
 				host: config.RedisHost,
 			},
 		});
-		cron.schedule("*/10 * * * * *", async () => {
+		cron.schedule("* * * * *", async () => {
 			const worker = new Worker(QUEUE_NAME, null, {
 				connection: {
 					host: config.RedisHost,
