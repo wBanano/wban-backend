@@ -326,10 +326,18 @@ class Banano {
 			config.BananoUsersDepositsHotWalletToColdWalletRatio
 		);
 		// compute how many BAN should be sent to cold wallet
+		let amount = amountAboveMinimum;
+		if (amountAboveMinimum.gt(deposit)) {
+			amount = deposit;
+		}
+		// round amount to lower integer value
+		const rounded = Math.round(
+			Number.parseInt(ethers.utils.formatUnits(amount, 18), 10)
+		);
+		amount = ethers.utils.parseEther(rounded.toString());
+		this.log.debug(`Amount to split: ${ethers.utils.formatEther(amount)} BAN`);
 		const ONE_HUNDRED = BigNumber.from(100);
-		const amount = ONE_HUNDRED.sub(targetRatio)
-			.mul(amountAboveMinimum)
-			.div(ONE_HUNDRED);
+		amount = ONE_HUNDRED.sub(targetRatio).mul(amount).div(ONE_HUNDRED);
 		this.log.info(
 			`Sending ${ethers.utils.formatEther(amount)} BAN to cold wallet`
 		);

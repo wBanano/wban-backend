@@ -95,78 +95,57 @@ describe("Banano Service", () => {
 	});
 
 	describe("Users Deposits hot/cold wallets", () => {
-		it("Sends BAN to cold wallet if there is enough BAN in hot wallet and threshold is breached", async () => {
-			const sender = "ban_sender";
-			const amount: BigNumber = ethers.utils.parseEther("10");
-			const hash = "0xCAFEBABE";
-			depositsService.hasPendingClaim.withArgs(sender).resolves(true);
-			depositsService.confirmClaim.withArgs(sender).resolves(true);
-			depositsService.isClaimed.withArgs(sender).resolves(true);
-			depositsService.storeUserDeposit
-				.withArgs(sender, amount, hash)
-				.resolves();
+		let dataset = [
+			{
+				hot: config.BananoUsersDepositsHotWalletMinimum,
+				deposit: "10",
+				expected: "8.0",
+			},
+			{ hot: "5", deposit: "12", expected: "5.6" },
+			{ hot: "0", deposit: "11", expected: "0.8" },
+			{ hot: "20", deposit: "10", expected: "8.0" },
+			{
+				hot: config.BananoUsersDepositsHotWalletMinimum,
+				deposit: "4.123456789012345678",
+				expected: "3.2",
+			},
+		];
 
-			svc.receiveTransaction.resolves();
-			svc.getTotalBalance
-				.withArgs(hotWallet)
-				.resolves(
-					ethers.utils
-						.parseEther(config.BananoUsersDepositsHotWalletMinimum)
-						.add(amount)
+		dataset.forEach(({ hot, deposit, expected }) => {
+			it(`Send ${expected} BAN to cold wallet when hot wallet has ${hot} BAN and user made a deposit of ${deposit} BAN`, async () => {
+				const sender = "ban_sender";
+				const amount: BigNumber = ethers.utils.parseEther(deposit);
+				const hash = "0xCAFEBABE";
+				depositsService.hasPendingClaim.withArgs(sender).resolves(true);
+				depositsService.confirmClaim.withArgs(sender).resolves(true);
+				depositsService.isClaimed.withArgs(sender).resolves(true);
+				depositsService.storeUserDeposit
+					.withArgs(sender, amount, hash)
+					.resolves();
+
+				svc.receiveTransaction.resolves();
+				svc.getTotalBalance
+					.withArgs(hotWallet)
+					.resolves(ethers.utils.parseEther(hot).add(amount));
+				svc.sendBan.resolves("0xTHISROCKS");
+
+				// make a deposit
+				await svc.processUserDeposit(sender, amount, hash);
+
+				// expect for it to be received
+				expect(svc.receiveTransaction).to.be.calledOnce;
+				// and stored
+				expect(depositsService.storeUserDeposit).to.be.calledOnceWith(
+					sender,
+					amount,
+					hash
 				);
-			svc.sendBan.resolves("0xTHISROCKS");
-
-			// make a deposit
-			await svc.processUserDeposit(sender, amount, hash);
-
-			// expect for it to be received
-			expect(svc.receiveTransaction).to.be.calledOnce;
-			// and stored
-			expect(depositsService.storeUserDeposit).to.be.calledOnceWith(
-				sender,
-				amount,
-				hash
-			);
-			// and BAN to be sent to cold wallet
-			expect(svc.sendBan).to.be.calledOnceWith(
-				coldWallet,
-				ethers.utils.parseEther("8.0")
-			);
-		});
-
-		it("Sends BAN to cold wallet only the above threshold when cold wallet has less than min deposits", async () => {
-			const sender = "ban_sender";
-			const amount: BigNumber = ethers.utils.parseEther("12");
-			const hash = "0xCAFEBABE";
-			depositsService.hasPendingClaim.withArgs(sender).resolves(true);
-			depositsService.confirmClaim.withArgs(sender).resolves(true);
-			depositsService.isClaimed.withArgs(sender).resolves(true);
-			depositsService.storeUserDeposit
-				.withArgs(sender, amount, hash)
-				.resolves();
-
-			svc.receiveTransaction.resolves();
-			svc.getTotalBalance
-				.withArgs(hotWallet)
-				.resolves(ethers.utils.parseEther("5").add(amount));
-			svc.sendBan.resolves("0xTHISROCKS");
-
-			// make a deposit
-			await svc.processUserDeposit(sender, amount, hash);
-
-			// expect for it to be received
-			expect(svc.receiveTransaction).to.be.calledOnce;
-			// and stored
-			expect(depositsService.storeUserDeposit).to.be.calledOnceWith(
-				sender,
-				amount,
-				hash
-			);
-			// and BAN to be sent to cold wallet
-			expect(svc.sendBan).to.be.calledOnceWith(
-				coldWallet,
-				ethers.utils.parseEther("5.6")
-			);
+				// and BAN to be sent to cold wallet
+				expect(svc.sendBan).to.be.calledOnceWith(
+					coldWallet,
+					ethers.utils.parseEther(expected)
+				);
+			});
 		});
 
 		it("Don't send BAN to cold wallet if there is not enough BAN in hot wallet", async () => {

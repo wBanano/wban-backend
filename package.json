@@ -66,9 +66,9 @@
 		"*.{ts,js}": "eslint --cache --fix"
 	},
 	"nyc": {
-		"lines": 47,
+		"lines": 48,
 		"functions": 27,
 		"branches": 60,
-		"statements": 47
+		"statements": 48
 	}
 }
