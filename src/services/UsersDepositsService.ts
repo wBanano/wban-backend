@@ -108,11 +108,11 @@ class UsersDepositsService {
 		return this.usersDepositsStorage.setLastBSCBlockProcessed(block);
 	}
 
-	async swapToBan(event: SwapWBANToBan): Promise<void> {
+	async storeUserSwapToBan(event: SwapWBANToBan): Promise<void> {
 		return this.usersDepositsStorage.storeUserSwapToBan(event);
 	}
 
-	async swapToBanWasAlreadyDone(event: SwapWBANToBan): Promise<boolean> {
+	async containsUserSwapToBan(event: SwapWBANToBan): Promise<boolean> {
 		return this.usersDepositsStorage.swapToBanWasAlreadyDone(event);
 	}
 }

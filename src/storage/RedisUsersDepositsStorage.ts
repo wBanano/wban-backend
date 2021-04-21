@@ -1,7 +1,7 @@
 import { Logger } from "tslog";
 import IORedis from "ioredis";
 import Redlock from "redlock";
-import { BigNumber } from "ethers";
+import { BigNumber, ethers } from "ethers";
 import { UsersDepositsStorage } from "./UsersDepositsStorage";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 import config from "../config";
@@ -193,7 +193,9 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		amount: BigNumber,
 		hash: string
 	): Promise<void> {
-		this.log.info(`Storing swap of ${amount} BAN for user ${from}`);
+		this.log.info(
+			`Storing swap of ${ethers.utils.formatEther(amount)} BAN for user ${from}`
+		);
 		await this.redlock
 			.lock(`locks:swaps:ban-to-wban:${from}`, 1_000)
 			.then(async (lock) => {
@@ -256,10 +258,35 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	}
 
 	async storeUserSwapToBan(swap: SwapWBANToBan): Promise<void> {
-		await this.redis.sadd(`swaps:wban-to-ban:${swap.bscWallet}`, swap.hash);
-		this.log.info(
-			`Stored user swap for ${swap.bscWallet} from ${swap.amount} wBAN to BAN`
-		);
+		this.redlock
+			.lock(`locks:deposits:${swap.banWallet}`, 1_000)
+			.then(async (lock) => {
+				let rawBalance: string | null;
+				try {
+					rawBalance = await this.redis.get(`deposits:${swap.banWallet}`);
+					let balance: BigNumber;
+					if (rawBalance) {
+						balance = BigNumber.from(rawBalance);
+					} else {
+						balance = BigNumber.from(0);
+					}
+					balance = balance.add(ethers.utils.parseEther(swap.amount));
+
+					await this.redis
+						.multi()
+						.sadd(`swaps:wban-to-ban:${swap.bscWallet}`, swap.hash)
+						.set(`deposits:${swap.banWallet}`, balance.toString())
+						.sadd(`txn:${swap.banWallet}`, swap.hash)
+						.exec();
+					this.log.info(
+						`Stored user swap from wBAN of ${swap.amount} BAN from ${swap.bscWallet} to ${swap.banWallet} with hash: ${swap.hash}`
+					);
+				} catch (err) {
+					this.log.error(err);
+				}
+				// unlock resource when done
+				return lock.unlock().catch((err) => this.log.error(err));
+			});
 	}
 
 	async swapToBanWasAlreadyDone(swap: SwapWBANToBan): Promise<boolean> {

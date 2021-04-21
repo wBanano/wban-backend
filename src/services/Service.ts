@@ -307,19 +307,17 @@ class Service {
 			`Swapping ${swap.amount} wBAN to BAN (txn: ${swap.hash}) into wallet "${swap.banWallet}"...`
 		);
 		// check if the BAN were already sent
-		if (await this.usersDepositsService.swapToBanWasAlreadyDone(swap)) {
+		if (await this.usersDepositsService.containsUserSwapToBan(swap)) {
 			this.log.warn(`Swap for transaction "${swap.hash}" was already done.`);
 			return {
 				hash: swap.hash,
 				wbanBalance: swap.wbanBalance,
 			};
 		}
-		// send the BAN to the user
-		const { pending, hash } = await this.eventuallySendBan(swap, true);
-		// store user swap from wBAN to BAN
-		await this.usersDepositsService.swapToBan(swap);
+		// add the amount to user deposits and store user swap from wBAN to BAN
+		await this.usersDepositsService.storeUserSwapToBan(swap);
 		return {
-			hash,
+			hash: swap.hash,
 			wbanBalance: swap.wbanBalance,
 		};
 	}

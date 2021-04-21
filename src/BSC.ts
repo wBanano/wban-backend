@@ -61,6 +61,7 @@ class BSC {
 					const block = await this.provider.getBlock(event.blockNumber);
 					const date = new Date(block.timestamp).toISOString();
 					const wbanBalance = await this.wBAN.balanceOf(bscWallet);
+					await this.provider.waitForTransaction(event.transactionHash, 5);
 					await this.handleSwapToBanEvents({
 						bscWallet,
 						banWallet,
@@ -114,7 +115,7 @@ class BSC {
 		try {
 			await txn.wait();
 		} catch (err) {
-			this.log.error("Transaction failed. Should credit BAN back!");
+			this.log.error("Transaction failed.", err);
 			throw new BSCTransactionFailedError(txn.hash, err);
 		}
 		const wbanBalance: BigNumber = await this.wBAN.balanceOf(address);
