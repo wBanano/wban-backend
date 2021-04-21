@@ -140,6 +140,14 @@ app.post("/swap", async (req: Request, res: Response) => {
  */
 
 app.set("sseManager", sseManager);
+setInterval(
+	() =>
+		sseManager.broadcast({
+			type: "ping",
+			data: "ping",
+		}),
+	15_000
+);
 
 app.get("/events/:ban_wallet", async (req: Request, res: Response) => {
 	const sse = req.app.get("sseManager");
@@ -148,14 +156,6 @@ app.get("/events/:ban_wallet", async (req: Request, res: Response) => {
 	req.on("close", () => {
 		sse.delete(id);
 	});
-	setInterval(
-		() =>
-			sse.broadcast({
-				type: "ping",
-				data: "ping",
-			}),
-		15_000
-	);
 });
 
 const jobListener: JobListener = {
