@@ -199,6 +199,7 @@ class Service {
 			throw new InvalidSignatureError();
 		}
 
+		// verify is the claim was previously done
 		if (!this.usersDepositsService.isClaimed(banWallet)) {
 			throw new Error(`Can't withdraw from unclaimed wallet ${banWallet}`);
 		} else if (!this.usersDepositsService.hasClaim(banWallet, bscWallet)) {
@@ -206,6 +207,11 @@ class Service {
 		}
 
 		const withdrawnAmount: BigNumber = ethers.utils.parseEther(amount);
+
+		// check for positive amounts
+		if (withdrawnAmount.isNegative()) {
+			throw new Error("Can't withdraw negative amounts of BAN");
+		}
 
 		if (withdrawal.checkUserBalance) {
 			// check if deposits are greater than or equal to amount to withdraw
@@ -277,6 +283,11 @@ class Service {
 		}
 
 		const amount: BigNumber = ethers.utils.parseEther(amountStr.toString());
+
+		// check for positive amounts
+		if (amount.isNegative()) {
+			throw new Error("Can't swap negative amounts of BAN");
+		}
 
 		// check if deposits are greater than or equal to amount to swap
 		const availableBalance: BigNumber = await this.usersDepositsService.getUserAvailableBalance(

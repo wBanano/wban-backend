@@ -155,61 +155,41 @@ describe("Main Service", () => {
 		});
 	});
 
-	describe("Safeguards against impersonating", () => {
-		it("Checks that a swap can only be done from a valid claim", async () => {
-			const amount = ethers.utils.parseEther("10");
-
+	describe("Withdrawals", () => {
+		it("Checks if a negative withdrawal amount is rejected", async () => {
 			const banWallet =
 				"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
-
-			const bscWallet1 = "0xec410e9f2756c30be4682a7e29918082adc12b55";
-			const signature1 =
-				"0x3931a99b23a5156661949e6f25ab12bb4f827dae7e17e7a54da28b5de517666130b4f639b99288118a1d5736a55a6b6bca833ab09fc1a2ca7164e2fe15deb1331b";
-
-			const bscWallet2 = "0x69FD25B60Da76Afd10D8Fc7306f10f2934fC4829";
-			const signature2 =
-				"0xf9960fcdc11388a841ab29a53e655fc1f5b117c77a00b4145eaafda24898ac3d20887765b5cd415b7a6bef3f665d5ce0478ad569888963eb889fd0b07ec85c7b1c";
-
+			const bscWallet = "0xec410E9F2756C30bE4682a7E29918082Adc12B55";
+			const withdrawal: BananoUserWithdrawal = {
+				banWallet,
+				amount: "-5",
+				bscWallet,
+				signature:
+					"0xc7f21062ef2c672e8cc77cecfdf532f39bcf6791e7f41266491fe649bedeaec9443e963400882d6dc46c8e10c033528a7bc5a517e136296d01be339baf6e9efb1b",
+				date: "2020-04-01",
+				checkUserBalance: true,
+			};
+			depositsService.containsUserWithdrawalRequest
+				.withArgs(withdrawal)
+				.onFirstCall()
+				.resolves(false);
+			depositsService.isClaimed.withArgs(banWallet).resolves(true);
+			depositsService.hasClaim.withArgs(banWallet, bscWallet).resolves(true);
 			depositsService.getUserAvailableBalance
 				.withArgs(banWallet)
-				.resolves(amount);
-			depositsService.hasClaim
-				.withArgs(banWallet, bscWallet1)
-				.resolves(true)
-				.withArgs(banWallet, bscWallet2)
-				.resolves(false);
-			bsc.mintTo
-				.withArgs(bscWallet1, amount)
-				.resolves({ hash: "0xCAFEBABE", wbanBalance: BigNumber.from(0) })
-				.withArgs(bscWallet2, amount)
-				.resolves({ hash: "0xCAFEBABE", wbanBalance: BigNumber.from(0) });
-
-			// legit user should be able to swap
-			const { hash, wbanBalance } = await svc.processSwapToWBAN({
-				from: banWallet,
-				amountStr: 10,
-				bscWallet: bscWallet1,
-				date: new Date().toISOString(),
-				signature: signature1,
-			});
-			expect(hash).to.equal("0xCAFEBABE");
-			expect(ethers.utils.formatEther(wbanBalance)).to.equal("0.0");
-
-			// hacker trying to swap funds from a wallet he doesn't own should be able to do it
-			// expect(await svc.swap(banWallet, 10, bscWallet2, signature2));
+				.resolves(ethers.utils.parseEther("200"));
+			banano.getBalance
+				.withArgs(config.BananoUsersDepositsHotWallet)
+				.resolves(ethers.utils.parseEther("100"));
+			// make the withdrawal...
 			await expect(
-				svc.processSwapToWBAN({
-					from: banWallet,
-					amountStr: 10,
-					bscWallet: bscWallet2,
-					date: new Date().toISOString(),
-					signature: signature2,
-				})
-			).to.eventually.be.rejectedWith(InvalidOwner);
+				svc.processWithdrawBAN(withdrawal)
+			).to.eventually.be.rejectedWith("Can't withdraw negative amounts of BAN");
+			// ... and that no withdrawal was processed
+			expect(banano.sendBan).to.have.not.been.called;
+			expect(depositsService.storeUserWithdrawal).to.have.not.been.called;
 		});
-	});
 
-	describe("Withdrawals", () => {
 		it("Checks if a big withdrawal is put in pending withdrawals", async () => {
 			const banWallet =
 				"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
@@ -243,6 +223,35 @@ describe("Main Service", () => {
 			// ... and that no withdrawal was processed
 			expect(banano.sendBan).to.have.not.been.called;
 			expect(depositsService.storeUserWithdrawal).to.have.not.been.called;
+		});
+	});
+
+	describe("Swaps BAN->wBAN", () => {
+		it("Checks that a swap can't be done with negative BAN amount", async () => {
+			const availableBalance = ethers.utils.parseEther("10");
+
+			const banWallet =
+				"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
+
+			const bscWallet = "0xec410e9f2756c30be4682a7e29918082adc12b55";
+			const signature =
+				"0x2bd2af61c6fb8672751ee7e22e9c477a5bd274ce56b7ebc8cb596d1a6abbf4c72bc3dd5c2015bb27f2d71b6fcfdae95cd9c22ba67108b0940ca166284f16d6891c";
+
+			depositsService.getUserAvailableBalance
+				.withArgs(banWallet)
+				.resolves(availableBalance);
+			depositsService.hasClaim.withArgs(banWallet, bscWallet).resolves(true);
+
+			await expect(
+				svc.processSwapToWBAN({
+					from: banWallet,
+					amountStr: -1,
+					bscWallet: bscWallet,
+					date: new Date().toISOString(),
+					signature: signature,
+				})
+			).to.eventually.be.rejectedWith("Can't swap negative amounts of BAN");
+			expect(bsc.mintTo).to.not.have.been.called;
 		});
 	});
 
@@ -287,6 +296,59 @@ describe("Main Service", () => {
 			expect(banano.sendBan).to.have.been.calledOnce;
 			// ... to make sure the transaction is not stored twice but once!
 			expect(depositsService.storeUserWithdrawal).to.have.been.calledOnce;
+		});
+	});
+
+	describe("Safeguards against impersonating", () => {
+		it("Checks that a swap can only be done from a valid claim", async () => {
+			const amount = ethers.utils.parseEther("10");
+
+			const banWallet =
+				"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
+
+			const bscWallet1 = "0xec410e9f2756c30be4682a7e29918082adc12b55";
+			const signature1 =
+				"0x3931a99b23a5156661949e6f25ab12bb4f827dae7e17e7a54da28b5de517666130b4f639b99288118a1d5736a55a6b6bca833ab09fc1a2ca7164e2fe15deb1331b";
+
+			const bscWallet2 = "0x69FD25B60Da76Afd10D8Fc7306f10f2934fC4829";
+			const signature2 =
+				"0xf9960fcdc11388a841ab29a53e655fc1f5b117c77a00b4145eaafda24898ac3d20887765b5cd415b7a6bef3f665d5ce0478ad569888963eb889fd0b07ec85c7b1c";
+
+			depositsService.getUserAvailableBalance
+				.withArgs(banWallet)
+				.resolves(amount);
+			depositsService.hasClaim
+				.withArgs(banWallet, bscWallet1)
+				.resolves(true)
+				.withArgs(banWallet, bscWallet2)
+				.resolves(false);
+			bsc.mintTo
+				.withArgs(bscWallet1, amount)
+				.resolves({ hash: "0xCAFEBABE", wbanBalance: BigNumber.from(0) })
+				.withArgs(bscWallet2, amount)
+				.resolves({ hash: "0xCAFEBABE", wbanBalance: BigNumber.from(0) });
+
+			// legit user should be able to swap
+			const { hash, wbanBalance } = await svc.processSwapToWBAN({
+				from: banWallet,
+				amountStr: 10,
+				bscWallet: bscWallet1,
+				date: new Date().toISOString(),
+				signature: signature1,
+			});
+			expect(hash).to.equal("0xCAFEBABE");
+			expect(ethers.utils.formatEther(wbanBalance)).to.equal("0.0");
+
+			// hacker trying to swap funds from a wallet he doesn't own should be able to do it
+			await expect(
+				svc.processSwapToWBAN({
+					from: banWallet,
+					amountStr: 10,
+					bscWallet: bscWallet2,
+					date: new Date().toISOString(),
+					signature: signature2,
+				})
+			).to.eventually.be.rejectedWith(InvalidOwner);
 		});
 	});
 });
