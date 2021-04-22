@@ -195,7 +195,8 @@ class Banano {
 			for (const hash of transactionsHashes) {
 				const transaction = walletPendingTransactions[hash];
 				this.log.debug(`Transaction is: ${JSON.stringify(transaction)}`);
-				const { amount, sender } = transaction;
+				const { amount } = transaction;
+				const sender = transaction.source;
 				const banAmount: BigNumber = BigNumber.from(
 					amount.substring(0, amount.length - 11)
 				);
