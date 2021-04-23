@@ -27,7 +27,7 @@ class RedisRepeatableQueue implements RepeatableQueue {
 					type: "exponential",
 					delay: 1_000,
 				},
-				removeOnComplete: 100,
+				removeOnComplete: 100_000,
 				removeOnFail: false,
 			},
 		});
@@ -36,7 +36,7 @@ class RedisRepeatableQueue implements RepeatableQueue {
 				host: config.RedisHost,
 			},
 		});
-		this.worker = new ProcessingQueueWorker(QUEUE_NAME, 4);
+		this.worker = new ProcessingQueueWorker(QUEUE_NAME);
 		this.queue.pause();
 	}
 

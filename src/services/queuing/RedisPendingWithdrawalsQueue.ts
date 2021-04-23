@@ -39,7 +39,7 @@ class RedisPendingWithdrawalsQueue implements PendingWithdrawalsQueue {
 					type: "exponential",
 					delay: 1_000,
 				},
-				removeOnComplete: 100,
+				removeOnComplete: 100_000,
 				removeOnFail: false,
 			},
 		});
