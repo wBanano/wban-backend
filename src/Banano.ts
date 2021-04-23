@@ -66,7 +66,7 @@ class Banano {
 		);
 
 		banano.setBananodeApiUrl(config.BananoRPCAPI);
-		// check every 5 miinutes if transactions were missed from the WebSockets API
+		// check every minute if transactions were missed from the WebSockets API
 		if (config.BananoPendingTransactionsThreadEnabled === true) {
 			cron.schedule("* * * * *", () => {
 				this.processPendingTransactions(usersDepositsHotWallet);
@@ -76,18 +76,6 @@ class Banano {
 				"Ignoring checks of pending transactions. Only do this for running tests!"
 			);
 		}
-	}
-
-	public async sendBan(banAddress: string, amount: BigNumber): Promise<string> {
-		this.log.debug(
-			`Sending ${ethers.utils.formatEther(amount)} BAN to ${banAddress}`
-		);
-		return banano.sendBananoWithdrawalFromSeed(
-			this.seed,
-			this.seedIdx,
-			banAddress,
-			ethers.utils.formatEther(amount)
-		);
 	}
 
 	async subscribeToBananoNotificationsForWallet(): Promise<void> {
@@ -170,13 +158,25 @@ class Banano {
 	private wsConnectionError(err): void {
 		this.log.error("Unexpected WS error", err);
 		this.log.info("Reconnecting to WS API...");
-		this.ws.connect(`ws://${config.BananoWebSocketsAPI}`);
+		this.subscribeToBananoNotificationsForWallet();
 	}
 
 	private wsConnectionClosed(code: number, desc: string): void {
 		this.log.info(`WS connection closed: code=${code}, desc=${desc}`);
 		this.log.info("Reconnecting to WS API...");
 		this.ws.connect(`ws://${config.BananoWebSocketsAPI}`);
+	}
+
+	public async sendBan(banAddress: string, amount: BigNumber): Promise<string> {
+		this.log.debug(
+			`Sending ${ethers.utils.formatEther(amount)} BAN to ${banAddress}`
+		);
+		return banano.sendBananoWithdrawalFromSeed(
+			this.seed,
+			this.seedIdx,
+			banAddress,
+			ethers.utils.formatEther(amount)
+		);
 	}
 
 	async processPendingTransactions(wallet: string): Promise<void> {
@@ -262,6 +262,7 @@ class Banano {
 				await this.sendBan(sender, amount);
 			} catch (err) {
 				this.log.error("Unexpected error", err);
+				throw err;
 			}
 		} else {
 			// record the user deposit
