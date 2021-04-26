@@ -106,10 +106,10 @@ class BSC {
 		const txn: ContractTransaction = await this.wBAN.mintTo(
 			address,
 			amount,
-			config.WBANMintGasPrice,
+			config.WBANMintGasLimit,
 			{
-				gasLimit: config.WBANMintGasPrice,
-				gasPrice: config.WBANMintGasLimit,
+				gasLimit: config.WBANMintGasLimit,
+				gasPrice: config.WBANMintGasPrice,
 			}
 		);
 		try {
