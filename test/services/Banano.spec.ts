@@ -62,6 +62,27 @@ describe("Banano Service", () => {
 			expect(svc.sendBan).to.be.calledOnceWith(sender, amount);
 		});
 
+		it("Sends back BAN deposits with more than two decimals", async () => {
+			const sender = "ban_sender";
+			const amount: BigNumber = ethers.utils.parseEther("1.466");
+			const hash = "0xCAFEBABE";
+			depositsService.hasPendingClaim.withArgs(sender).resolves(false);
+			depositsService.isClaimed.withArgs(sender).resolves(true);
+
+			svc.receiveTransaction.resolves();
+			svc.sendBan.resolves("0xTHISROCKS");
+
+			// make a deposit
+			await svc.processUserDeposit(sender, amount, hash);
+
+			// expect for it to be received
+			expect(svc.receiveTransaction).to.be.calledOnce;
+			// and sent back
+			expect(svc.sendBan).to.be.calledOnceWith(sender, amount);
+			// and have no deposit stored
+			expect(depositsService.storeUserDeposit).to.not.have.been.called;
+		});
+
 		it("Registers user deposit from a pending claimed wallet", async () => {
 			const sender = "ban_sender";
 			const amount: BigNumber = ethers.utils.parseEther("1");
@@ -106,7 +127,7 @@ describe("Banano Service", () => {
 			{ hot: "20", deposit: "10", expected: "8.0" },
 			{
 				hot: config.BananoUsersDepositsHotWalletMinimum,
-				deposit: "4.123456789012345678",
+				deposit: "4.12",
 				expected: "3.2",
 			},
 		];
