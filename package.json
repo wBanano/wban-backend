@@ -1,6 +1,6 @@
 {
 	"name": "wban-backend",
-	"version": "0.4.2",
+	"version": "0.4.3",
 	"description": "wBAN backend for swaps",
 	"main": "dist/app.js",
 	"scripts": {
