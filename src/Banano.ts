@@ -357,6 +357,10 @@ class Banano {
 		this.log.debug(`Amount to split: ${ethers.utils.formatEther(amount)} BAN`);
 		const ONE_HUNDRED = BigNumber.from(100);
 		amount = ONE_HUNDRED.sub(targetRatio).mul(amount).div(ONE_HUNDRED);
+		// check if amount is above zero
+		if (amount.eq(BigNumber.from(0))) {
+			return;
+		}
 		this.log.info(
 			`Sending ${ethers.utils.formatEther(amount)} BAN to cold wallet`
 		);

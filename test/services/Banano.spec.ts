@@ -201,7 +201,41 @@ describe("Banano Service", () => {
 				amount,
 				hash
 			);
-			// and BAN to be sent to cold wallet
+			// and no BAN to be sent to cold wallet
+			expect(svc.sendBan).to.not.have.been.called;
+		});
+
+		it("Don't send BAN to cold wallet if there is 0 BAN to send", async () => {
+			const hot = config.BananoUsersDepositsHotWalletMinimum;
+			const deposit = "0.01";
+			const sender = "ban_sender";
+			const amount: BigNumber = ethers.utils.parseEther(deposit);
+			const hash = "0xCAFEBABE";
+			depositsService.hasPendingClaim.withArgs(sender).resolves(true);
+			depositsService.confirmClaim.withArgs(sender).resolves(true);
+			depositsService.isClaimed.withArgs(sender).resolves(true);
+			depositsService.storeUserDeposit
+				.withArgs(sender, amount, hash)
+				.resolves();
+
+			svc.receiveTransaction.resolves();
+			svc.getTotalBalance
+				.withArgs(hotWallet)
+				.resolves(ethers.utils.parseEther(hot).add(amount));
+			svc.sendBan.resolves("0xTHISROCKS");
+
+			// make a deposit
+			await svc.processUserDeposit(sender, amount, hash);
+
+			// expect for it to be received
+			expect(svc.receiveTransaction).to.be.calledOnce;
+			// and stored
+			expect(depositsService.storeUserDeposit).to.be.calledOnceWith(
+				sender,
+				amount,
+				hash
+			);
+			// and no BAN to be sent to cold wallet
 			expect(svc.sendBan).to.not.have.been.called;
 		});
 	});
