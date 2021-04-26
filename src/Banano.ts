@@ -250,13 +250,14 @@ class Banano {
 			await this.usersDepositsService.confirmClaim(sender);
 		}
 
-		// check if there is a valid claim
+		await this.receiveTransaction(hash);
+
+		// check if there is no valid claim
 		if (!(await this.usersDepositsService.isClaimed(sender))) {
 			const formattedAmount = ethers.utils.formatEther(amount);
 			this.log.warn(
 				`No claim were made for "${sender}". Sending back the ${formattedAmount} BAN deposited`
 			);
-			await this.receiveTransaction(hash);
 			// send back the BAN!
 			try {
 				await this.sendBan(sender, amount);
@@ -265,10 +266,26 @@ class Banano {
 				throw err;
 			}
 		} else {
-			// record the user deposit
-			this.usersDepositsService.storeUserDeposit(sender, amount, hash);
-			await this.receiveTransaction(hash);
-			await this.eventuallySendToColdWallet(amount);
+			const formattedAmount = ethers.utils.formatEther(amount);
+			const number = Number.parseFloat(formattedAmount);
+			const rounded = Math.round(number * 100) / 100;
+			// check if the deposit has more than 2 decimals
+			if (number !== rounded) {
+				this.log.warn(
+					`Deposit has more than two decimals. Sending back the ${formattedAmount} BAN deposited by ${sender}`
+				);
+				// send back the BAN!
+				try {
+					await this.sendBan(sender, amount);
+				} catch (err) {
+					this.log.error("Unexpected error", err);
+					throw err;
+				}
+			} else {
+				// record the user deposit
+				this.usersDepositsService.storeUserDeposit(sender, amount, hash);
+				await this.eventuallySendToColdWallet(amount);
+			}
 		}
 	}
 
