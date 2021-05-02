@@ -1,9 +1,9 @@
 declare type SwapBanToWBAN = {
 	from: string;
-	amountStr: number;
+	amount: number;
 	bscWallet: string;
 	signature: string;
-	date: string;
+	timestamp: number;
 };
 
 export default SwapBanToWBAN;

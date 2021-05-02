@@ -30,6 +30,7 @@ describe("Users Deposits Service", () => {
 		const address = "0xCAFEBABE";
 		const amount = BigNumber.from(123);
 		const hash = "<the-hash>";
+		const timestamp = Date.now();
 		storage.containsUserDepositTransaction
 			// accept to ingest the transaction the first time
 			.onFirstCall()
@@ -40,8 +41,8 @@ describe("Users Deposits Service", () => {
 		storage.containsUserDepositTransaction;
 		storage.storeUserDeposit.resolves();
 		// call the service twice...
-		await svc.storeUserDeposit(address, amount, hash);
-		await svc.storeUserDeposit(address, amount, hash);
+		await svc.storeUserDeposit(address, amount, timestamp, hash);
+		await svc.storeUserDeposit(address, amount, timestamp, hash);
 		expect(
 			storage.containsUserDepositTransaction
 		).to.have.been.calledTwice.and.calledWith(address, hash);

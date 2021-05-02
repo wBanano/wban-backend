@@ -75,9 +75,9 @@ describe("Main Service", () => {
 		await expect(
 			svc.processSwapToWBAN({
 				from,
-				amountStr: 10,
+				amount: 10,
 				bscWallet,
-				date: new Date().toISOString(),
+				timestamp: Date.now(),
 				signature: badSignature,
 			})
 		).to.eventually.be.rejectedWith(InvalidSignatureError);
@@ -166,7 +166,7 @@ describe("Main Service", () => {
 				bscWallet,
 				signature:
 					"0xc7f21062ef2c672e8cc77cecfdf532f39bcf6791e7f41266491fe649bedeaec9443e963400882d6dc46c8e10c033528a7bc5a517e136296d01be339baf6e9efb1b",
-				date: "2020-04-01",
+				timestamp: Date.now(),
 				checkUserBalance: true,
 			};
 			depositsService.containsUserWithdrawalRequest
@@ -200,7 +200,7 @@ describe("Main Service", () => {
 				bscWallet,
 				signature:
 					"0xc7f21062ef2c672e8cc77cecfdf532f39bcf6791e7f41266491fe649bedeaec9443e963400882d6dc46c8e10c033528a7bc5a517e136296d01be339baf6e9efb1b",
-				date: "2020-04-01",
+				timestamp: Date.now(),
 				checkUserBalance: true,
 			};
 			depositsService.containsUserWithdrawalRequest
@@ -245,13 +245,13 @@ describe("Main Service", () => {
 			await expect(
 				svc.processSwapToWBAN({
 					from: banWallet,
-					amountStr: -1,
+					amount: -1,
 					bscWallet: bscWallet,
-					date: new Date().toISOString(),
+					timestamp: Date.now(),
 					signature: signature,
 				})
 			).to.eventually.be.rejectedWith("Can't swap negative amounts of BAN");
-			expect(bsc.mintTo).to.not.have.been.called;
+			expect(bsc.createMintReceipt).to.not.have.been.called;
 		});
 	});
 
@@ -266,7 +266,7 @@ describe("Main Service", () => {
 				bscWallet,
 				signature:
 					"0xc7f21062ef2c672e8cc77cecfdf532f39bcf6791e7f41266491fe649bedeaec9443e963400882d6dc46c8e10c033528a7bc5a517e136296d01be339baf6e9efb1b",
-				date: "2020-04-01",
+				timestamp: Date.now(),
 				checkUserBalance: true,
 			};
 			depositsService.containsUserWithdrawalRequest
@@ -322,30 +322,38 @@ describe("Main Service", () => {
 				.resolves(true)
 				.withArgs(banWallet, bscWallet2)
 				.resolves(false);
-			bsc.mintTo
+			bsc.createMintReceipt
 				.withArgs(bscWallet1, amount)
-				.resolves({ hash: "0xCAFEBABE", wbanBalance: BigNumber.from(0) })
+				.resolves({
+					receipt: "0xCAFEBABE",
+					uuid: "123",
+					wbanBalance: BigNumber.from(0),
+				})
 				.withArgs(bscWallet2, amount)
-				.resolves({ hash: "0xCAFEBABE", wbanBalance: BigNumber.from(0) });
+				.resolves({
+					receipt: "0xCAFEBABE",
+					uuid: "123",
+					wbanBalance: BigNumber.from(0),
+				});
 
 			// legit user should be able to swap
-			const { hash, wbanBalance } = await svc.processSwapToWBAN({
+			const { receipt, uuid, wbanBalance } = await svc.processSwapToWBAN({
 				from: banWallet,
-				amountStr: 10,
+				amount: 10,
 				bscWallet: bscWallet1,
-				date: new Date().toISOString(),
+				timestamp: Date.now(),
 				signature: signature1,
 			});
-			expect(hash).to.equal("0xCAFEBABE");
+			expect(receipt).to.equal("0xCAFEBABE");
 			expect(ethers.utils.formatEther(wbanBalance)).to.equal("0.0");
 
 			// hacker trying to swap funds from a wallet he doesn't own should be able to do it
 			await expect(
 				svc.processSwapToWBAN({
 					from: banWallet,
-					amountStr: 10,
+					amount: 10,
 					bscWallet: bscWallet2,
-					date: new Date().toISOString(),
+					timestamp: Date.now(),
 					signature: signature2,
 				})
 			).to.eventually.be.rejectedWith(InvalidOwner);

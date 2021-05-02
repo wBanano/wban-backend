@@ -52,9 +52,6 @@ export default {
 		Number.parseInt(process.env.BSC_PENDING_BLOCKS_START, 10) ?? 0,
 
 	WBANContractAddress: process.env.WBAN_CONTRACT_ADDRESS ?? "",
-	WBANMintGasPrice:
-		Number.parseInt(process.env.WBAN_MINT_GAS_PRICE, 10) ?? 61_000,
-	WBANMintGasLimit: process.env.WBAN_MINT_GAS_LIMIT ?? "20000000000",
 
 	RedisHost: process.env.REDIS_HOST ?? "",
 
