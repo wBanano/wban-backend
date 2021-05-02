@@ -111,7 +111,7 @@ class RedisProcessingQueue implements ProcessingQueue {
 		withdrawal: BananoUserWithdrawal
 	): Promise<any> {
 		this.processingQueue.add(OperationsNames.BananoWithdrawal, withdrawal, {
-			jobId: `${OperationsNames.BananoWithdrawal}-${withdrawal.banWallet}-${withdrawal.date}`,
+			jobId: `${OperationsNames.BananoWithdrawal}-${withdrawal.banWallet}-${withdrawal.timestamp}`,
 		});
 		this.log.debug(
 			`Added banano withdrawal to queue: ${JSON.stringify(withdrawal)}`
@@ -121,14 +121,14 @@ class RedisProcessingQueue implements ProcessingQueue {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	async addSwapToWBan(swap: SwapBanToWBAN): Promise<any> {
 		this.processingQueue.add(OperationsNames.SwapToWBAN, swap, {
-			jobId: `${OperationsNames.SwapToWBAN}-${swap.from}-${swap.date}`,
+			jobId: `${OperationsNames.SwapToWBAN}-${swap.from}-${swap.timestamp}`,
 		});
 		this.log.debug(`Added swap BAN -> wBAN to queue: ${JSON.stringify(swap)}`);
 	}
 
 	async addSwapToBan(swap: SwapWBANToBan): Promise<any> {
 		this.processingQueue.add(OperationsNames.SwapToBAN, swap, {
-			jobId: `${OperationsNames.SwapToBAN}-${swap.bscWallet}-${swap.date}`,
+			jobId: `${OperationsNames.SwapToBAN}-${swap.bscWallet}-${swap.timestamp}`,
 		});
 		this.log.debug(`Added swap wBAN -> BAN to queue: ${JSON.stringify(swap)}`);
 	}

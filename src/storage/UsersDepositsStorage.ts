@@ -14,23 +14,45 @@ interface UsersDepositsStorage {
 	confirmClaim(banAddress: string): Promise<boolean>;
 
 	storeUserDeposit(
-		from: string,
+		banAddress: string,
 		amount: BigNumber,
+		timestamp: number,
 		hash: string
 	): Promise<void>;
+	containsUserDepositTransaction(
+		banAddress: string,
+		hash: string
+	): Promise<boolean>;
 	storeUserWithdrawal(
-		from: string,
+		banAddress: string,
 		amount: BigNumber,
-		date: string
+		timestamp: number,
+		hash: string
 	): Promise<void>;
-	storeUserSwap(from: string, amount: BigNumber, hash: string): Promise<void>;
-	containsUserDepositTransaction(from: string, hash: string): Promise<boolean>;
-	containsUserWithdrawalRequest(from: string, date: string): Promise<boolean>;
+	containsUserWithdrawalRequest(
+		banAddress: string,
+		timestamp: number
+	): Promise<boolean>;
+
+	storeUserSwapToWBan(
+		banAddress: string,
+		amount: BigNumber,
+		timestamp: number,
+		receipt: string,
+		uuid: string
+	): Promise<void>;
+	storeUserSwapToBan(swap: SwapWBANToBan): Promise<void>;
+	swapToBanWasAlreadyDone(swap: SwapWBANToBan): Promise<boolean>;
 
 	getLastBSCBlockProcessed(): Promise<number>;
 	setLastBSCBlockProcessed(block: number): Promise<void>;
-	storeUserSwapToBan(swap: SwapWBANToBan): Promise<void>;
-	swapToBanWasAlreadyDone(swap: SwapWBANToBan): Promise<boolean>;
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	getDeposits(banAddress: string): Promise<Array<any>>;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	getWithdrawals(banAddress: string): Promise<Array<any>>;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	getSwaps(bscAddress: string, banAddress: string): Promise<Array<any>>;
 }
 
 export { UsersDepositsStorage };

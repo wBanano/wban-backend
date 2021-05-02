@@ -19,6 +19,7 @@ import RedisProcessingQueue from "./services/queuing/RedisProcessingQueue";
 import RedisPendingWithdrawalsQueue from "./services/queuing/RedisPendingWithdrawalsQueue";
 import RepeatableQueue from "./services/queuing/RepeatableQueue";
 import RedisRepeatableQueue from "./services/queuing/RedisRepeatableQueue";
+import History from "./models/responses/History";
 
 const app: Application = express();
 // const sse: SSE = new SSE();
@@ -79,7 +80,7 @@ app.post("/withdrawals/ban", async (req: Request, res: Response) => {
 		banWallet,
 		banAmount.toString(),
 		bscWallet,
-		new Date(),
+		Date.now(),
 		signature
 	);
 	res.status(201).send();
@@ -131,8 +132,15 @@ app.post("/swap", async (req: Request, res: Response) => {
 		`banAmount=${banAmount}, banWallet=${banWallet}, bscWallet=${bscWallet}, signature=${signature}`
 	);
 
-	await svc.swapToWBAN(banWallet, banAmount, bscWallet, new Date(), signature);
+	await svc.swapToWBAN(banWallet, banAmount, bscWallet, Date.now(), signature);
 	res.status(201).send();
+});
+
+app.get("/history/:bsc/:ban", async (req: Request, res: Response) => {
+	const bscWallet = req.params.bsc;
+	const banWallet = req.params.ban;
+	const history: History = await svc.getHistory(bscWallet, banWallet);
+	res.send(history);
 });
 
 /*

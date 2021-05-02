@@ -48,21 +48,30 @@ class UsersDepositsService {
 	}
 
 	async storeUserDeposit(
-		from: string,
+		banAddress: string,
 		amount: BigNumber,
+		timestamp: number,
 		hash: string
 	): Promise<void> {
 		// check if the transaction wasn't already ingested!
 		if (
-			await this.usersDepositsStorage.containsUserDepositTransaction(from, hash)
+			await this.usersDepositsStorage.containsUserDepositTransaction(
+				banAddress,
+				hash
+			)
 		) {
 			this.log.warn(
-				`User deposit transaction ${hash} from ${from} was already processed. Skipping it...`
+				`User deposit transaction ${hash} from ${banAddress} was already processed. Skipping it...`
 			);
 			return;
 		}
 		// store the user deposit
-		this.usersDepositsStorage.storeUserDeposit(from, amount, hash);
+		this.usersDepositsStorage.storeUserDeposit(
+			banAddress,
+			amount,
+			timestamp,
+			hash
+		);
 	}
 
 	async containsUserWithdrawalRequest(
@@ -70,34 +79,51 @@ class UsersDepositsService {
 	): Promise<boolean> {
 		return this.usersDepositsStorage.containsUserWithdrawalRequest(
 			withdrawal.bscWallet,
-			withdrawal.date
+			withdrawal.timestamp
 		);
 	}
 
 	async storeUserWithdrawal(
-		from: string,
+		banAddress: string,
 		amount: BigNumber,
-		date: string
+		timestamp: number,
+		hash: string
 	): Promise<void> {
 		// check if the transaction wasn't already ingested!
 		if (
-			await this.usersDepositsStorage.containsUserWithdrawalRequest(from, date)
+			await this.usersDepositsStorage.containsUserWithdrawalRequest(
+				banAddress,
+				timestamp
+			)
 		) {
 			this.log.warn(
-				`User withdrawal request from ${from} with date ${date} was already processed. Skipping it...`
+				`User withdrawal request ${hash} from ${banAddress} was already processed. Skipping it...`
 			);
 			return;
 		}
 		// store the user withdrawal
-		this.usersDepositsStorage.storeUserWithdrawal(from, amount, date);
+		this.usersDepositsStorage.storeUserWithdrawal(
+			banAddress,
+			amount,
+			timestamp,
+			hash
+		);
 	}
 
-	async storeUserSwap(
+	async storeUserSwapToWBan(
 		from: string,
 		amount: BigNumber,
-		hash: string
+		timestamp: number,
+		receipt: string,
+		uuid: string
 	): Promise<void> {
-		return this.usersDepositsStorage.storeUserSwap(from, amount, hash);
+		return this.usersDepositsStorage.storeUserSwapToWBan(
+			from,
+			amount,
+			timestamp,
+			receipt,
+			uuid
+		);
 	}
 
 	async getLastBSCBlockProcessed(): Promise<number> {
@@ -114,6 +140,21 @@ class UsersDepositsService {
 
 	async containsUserSwapToBan(event: SwapWBANToBan): Promise<boolean> {
 		return this.usersDepositsStorage.swapToBanWasAlreadyDone(event);
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async getDeposits(banWallet: string): Promise<Array<any>> {
+		return this.usersDepositsStorage.getDeposits(banWallet);
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	getWithdrawals(banWallet: string): Promise<Array<any>> {
+		return this.usersDepositsStorage.getWithdrawals(banWallet);
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	getSwaps(bscWallet: string, banWallet: string): Promise<Array<any>> {
+		return this.usersDepositsStorage.getSwaps(bscWallet, banWallet);
 	}
 }
 

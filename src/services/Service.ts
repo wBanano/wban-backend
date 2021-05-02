@@ -18,6 +18,7 @@ import BananoUserWithdrawal from "../models/operations/BananoUserWithdrawal";
 import SwapBanToWBAN from "../models/operations/SwapBanToWBAN";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 import RepeatableQueue from "./queuing/RepeatableQueue";
+import History from "../models/responses/History";
 
 class Service {
 	banano: Banano;
@@ -64,16 +65,19 @@ class Service {
 			OperationsNames.SwapToWBAN,
 			async (job) => {
 				const swap: SwapBanToWBAN = job.data;
-				const { hash, wbanBalance } = await this.processSwapToWBAN(swap);
+				const { receipt, uuid, wbanBalance } = await this.processSwapToWBAN(
+					swap
+				);
 				return {
 					banWallet: swap.from,
-					swapped: swap.amountStr,
+					bscWallet: swap.bscWallet,
+					swapped: swap.amount,
+					receipt,
+					uuid,
 					balance: ethers.utils.formatEther(
 						await this.usersDepositsService.getUserAvailableBalance(swap.from)
 					),
 					wbanBalance: ethers.utils.formatEther(wbanBalance),
-					transaction: hash,
-					transactionLink: `${config.BinanceSmartChainBlockExplorerUrl}/tx/${hash}`,
 				};
 			}
 		);
@@ -151,7 +155,7 @@ class Service {
 		banWallet: string,
 		amount: string,
 		bscWallet: string,
-		date: Date,
+		timestamp: number,
 		signature: string
 	): Promise<string> {
 		return this.processingQueue.addBananoUserWithdrawal({
@@ -159,7 +163,7 @@ class Service {
 			amount,
 			bscWallet,
 			signature,
-			date: date.toISOString(),
+			timestamp,
 			checkUserBalance: true,
 		});
 	}
@@ -169,7 +173,7 @@ class Service {
 		queuePendingWithdrawals = true,
 		signature?: string
 	): Promise<string> {
-		const { banWallet, amount, bscWallet, date } = withdrawal;
+		const { banWallet, amount, bscWallet, timestamp } = withdrawal;
 
 		this.log.info(
 			`Processing user withdrawal request of "${amount}" BAN from wallet "${banWallet}"`
@@ -180,7 +184,7 @@ class Service {
 			await this.usersDepositsService.containsUserWithdrawalRequest(withdrawal)
 		) {
 			this.log.warn(
-				`User withdrawal request to "${banWallet}" at ${date} was already processed`
+				`User withdrawal request to "${banWallet}" at ${timestamp} was already processed`
 			);
 			throw new Error(
 				"Can't withdraw BAN as the transaction was already processed"
@@ -242,7 +246,8 @@ class Service {
 			await this.usersDepositsService.storeUserWithdrawal(
 				banWallet,
 				withdrawnAmount,
-				date
+				timestamp,
+				hash
 			);
 		}
 		this.log.info(`Withdrawed ${amount} BAN to "${banWallet}"`);
@@ -251,22 +256,23 @@ class Service {
 
 	async swapToWBAN(
 		from: string,
-		amountStr: number,
+		amount: number,
 		bscWallet: string,
-		date: Date,
+		timestamp: number,
 		signature: string
 	): Promise<string> {
 		return this.processingQueue.addSwapToWBan({
 			from,
-			amountStr,
+			amount,
 			bscWallet,
 			signature,
-			date: date.toISOString(),
+			timestamp,
 		});
 	}
 
 	async processSwapToWBAN(swap: SwapBanToWBAN): Promise<any> {
-		const { from, amountStr, bscWallet, signature } = swap;
+		const { from, bscWallet, signature } = swap;
+		const amountStr = swap.amount;
 		// verify signature
 		if (
 			!this.checkSignature(
@@ -301,12 +307,21 @@ class Service {
 			throw new InsufficientBalanceError(message);
 		}
 
-		// mint wBAN tokens
-		const { hash, wbanBalance } = await this.bsc.mintTo(bscWallet, amount);
+		// create wBAN swap receipt
+		const { receipt, uuid, wbanBalance } = await this.bsc.createMintReceipt(
+			bscWallet,
+			amount
+		);
 		// decrease user deposits
 		// TODO: store signature?
-		await this.usersDepositsService.storeUserSwap(from, amount, hash);
-		return { hash, wbanBalance };
+		await this.usersDepositsService.storeUserSwapToWBan(
+			from,
+			amount,
+			swap.timestamp,
+			receipt,
+			uuid
+		);
+		return { receipt, uuid, wbanBalance };
 	}
 
 	async swapToBAN(swap: SwapWBANToBan): Promise<string> {
@@ -331,6 +346,19 @@ class Service {
 			hash: swap.hash,
 			wbanBalance: swap.wbanBalance,
 		};
+	}
+
+	async getHistory(bscWallet: string, banWallet: string): Promise<History> {
+		const history = new History();
+		history.deposits = await this.usersDepositsService.getDeposits(banWallet);
+		history.withdrawals = await this.usersDepositsService.getWithdrawals(
+			banWallet
+		);
+		history.swaps = await this.usersDepositsService.getSwaps(
+			bscWallet,
+			banWallet
+		);
+		return history;
 	}
 
 	checkSignature(

@@ -2,7 +2,7 @@ declare type Withdrawal = {
 	banWallet: string;
 	bscWallet: string;
 	amount: string;
-	date: string;
+	timestamp: number;
 	checkUserBalance: boolean;
 };
 

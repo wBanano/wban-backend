@@ -51,6 +51,7 @@ class Banano {
 				await this.processUserDeposit(
 					deposit.sender,
 					ethers.utils.parseEther(deposit.amount),
+					deposit.timestamp,
 					deposit.hash
 				);
 				return {
@@ -100,6 +101,7 @@ class Banano {
 		const amount: BigNumber = BigNumber.from(
 			rawAmount.substring(0, rawAmount.length - 11)
 		);
+		const timestamp = Date.now(); // TODO: replace this with local_timestamp from block_info
 		const { hash } = notification.message;
 
 		// filter transactions sent by the users deposits wallets
@@ -127,7 +129,7 @@ class Banano {
 			this.log.trace(`Received message ${JSON.stringify(notification)}`);
 		}
 		// record the user deposit
-		await this.queueUserDeposit(sender, amount, hash);
+		await this.queueUserDeposit(sender, amount, timestamp, hash);
 	}
 
 	private wsConnectionEstablished(conn: WS.connection): void {
@@ -200,6 +202,7 @@ class Banano {
 				const banAmount: BigNumber = BigNumber.from(
 					amount.substring(0, amount.length - 11)
 				);
+				const timestamp = Date.now(); // TODO: replace this with local_timestamp from block_info
 				// filter transactions sent by the users deposits wallets
 				if (
 					sender === this.usersDepositsHotWallet ||
@@ -216,7 +219,7 @@ class Banano {
 				);
 				// record the user deposit
 				// eslint-disable-next-line no-await-in-loop
-				await this.queueUserDeposit(sender, banAmount, hash);
+				await this.queueUserDeposit(sender, banAmount, timestamp, hash);
 			}
 		} else {
 			this.log.debug("No pending transactions...");
@@ -226,11 +229,13 @@ class Banano {
 	async queueUserDeposit(
 		sender: string,
 		amount: BigNumber,
+		timestamp: number,
 		hash: string
 	): Promise<void> {
 		return this.processingQueue.addBananoUserDeposit({
 			sender,
 			amount: ethers.utils.formatEther(amount),
+			timestamp,
 			hash,
 		});
 	}
@@ -238,6 +243,7 @@ class Banano {
 	async processUserDeposit(
 		sender: string,
 		amount: BigNumber,
+		timestamp: number,
 		hash: string
 	): Promise<void> {
 		this.log.info(
@@ -283,7 +289,12 @@ class Banano {
 				}
 			} else {
 				// record the user deposit
-				this.usersDepositsService.storeUserDeposit(sender, amount, hash);
+				this.usersDepositsService.storeUserDeposit(
+					sender,
+					amount,
+					timestamp,
+					hash
+				);
 				await this.eventuallySendToColdWallet(amount);
 			}
 		}
