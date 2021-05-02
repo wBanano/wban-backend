@@ -1,4 +1,4 @@
-import { ethers, BigNumber, Wallet, ContractTransaction } from "ethers";
+import { ethers, BigNumber, Wallet } from "ethers";
 import { Logger } from "tslog";
 import {
 	WBANToken,
@@ -7,7 +7,6 @@ import {
 } from "wban-smart-contract";
 import SwapWBANToBan from "./models/operations/SwapWBANToBan";
 import { SwapToBanEventListener } from "./models/listeners/SwapToBanEventListener";
-import BSCTransactionFailedError from "./errors/BSCTransactionFailedError";
 import { UsersDepositsService } from "./services/UsersDepositsService";
 import config from "./config";
 import RepeatableQueue from "./services/queuing/RepeatableQueue";
@@ -59,7 +58,7 @@ class BSC {
 					event: ethers.Event
 				) => {
 					const block = await this.provider.getBlock(event.blockNumber);
-					const date = new Date(block.timestamp).toISOString();
+					const { timestamp } = block;
 					const wbanBalance = await this.wBAN.balanceOf(bscWallet);
 					await this.provider.waitForTransaction(event.transactionHash, 5);
 					await this.handleSwapToBanEvents({
@@ -68,7 +67,7 @@ class BSC {
 						amount: ethers.utils.formatEther(amount),
 						wbanBalance: ethers.utils.formatEther(wbanBalance),
 						hash: event.transactionHash,
-						date,
+						timestamp,
 						checkUserBalance: false,
 					});
 				}
@@ -78,7 +77,7 @@ class BSC {
 			) {
 				// eslint-disable-next-line @typescript-eslint/no-unused-vars
 				repeatableQueue.registerProcessor("bsc-scan", async (job) => {
-					await this.processBlocks();
+					return this.processBlocks();
 				});
 				// scan BSC blockchain every 30 seconds
 				repeatableQueue
@@ -99,33 +98,30 @@ class BSC {
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	async mintTo(address: string, amount: BigNumber): Promise<any> {
+	async createMintReceipt(address: string, amount: BigNumber): Promise<any> {
 		this.log.debug(
-			`Minting ${ethers.utils.formatEther(amount)} BAN to ${address}`
+			`Forging mint receipt for ${ethers.utils.formatEther(
+				amount
+			)} BAN to ${address}`
 		);
-		const txn: ContractTransaction = await this.wBAN.mintTo(
-			address,
-			amount,
-			config.WBANMintGasLimit,
-			{
-				gasLimit: config.WBANMintGasLimit,
-				gasPrice: config.WBANMintGasPrice,
-			}
+		const uuid = Date.now();
+		const payload = ethers.utils.defaultAbiCoder.encode(
+			["address", "uint256", "uint256"],
+			[address, amount, uuid]
 		);
-		try {
-			await txn.wait();
-		} catch (err) {
-			this.log.error("Transaction failed.", err);
-			throw new BSCTransactionFailedError(txn.hash, err);
-		}
+		const payloadHash = ethers.utils.keccak256(payload);
+		const receipt = await this.wallet.signMessage(
+			ethers.utils.arrayify(payloadHash)
+		);
 		const wbanBalance: BigNumber = await this.wBAN.balanceOf(address);
 		return {
-			hash: txn.hash,
+			receipt,
+			uuid,
 			wbanBalance,
 		};
 	}
 
-	async processBlocks(): Promise<void> {
+	async processBlocks(): Promise<string> {
 		try {
 			const latestBlockProcessed: number = await this.usersDepositsService.getLastBSCBlockProcessed();
 			const currentBlock: number = await this.provider.getBlockNumber();
@@ -143,26 +139,27 @@ class BSC {
 				logs.map(async (log) => {
 					const parsedLog = this.wBAN.interface.parseLog(log);
 					const block = await this.provider.getBlock(log.blockNumber);
-					const date = new Date(block.timestamp).toISOString();
-					const { from } = parsedLog.args;
+					const { timestamp } = block;
+					const { from, banAddress, amount } = parsedLog.args;
 					const wbanBalance = await this.wBAN.balanceOf(from);
 					return {
 						bscWallet: from,
-						banWallet: parsedLog.args.ban_address,
-						amount: ethers.utils.formatEther(
-							BigNumber.from(parsedLog.args.amount)
-						),
+						banWallet: banAddress,
+						amount: ethers.utils.formatEther(BigNumber.from(amount)),
 						wbanBalance: ethers.utils.formatEther(wbanBalance),
 						hash: log.transactionHash,
-						date,
+						timestamp,
 						checkUserBalance: false,
 					};
 				})
 			);
-			events.forEach(async (swapEvent) => {
-				await this.handleSwapToBanEvents(swapEvent);
-			});
+			await Promise.all(
+				events.map((event) => this.handleSwapToBanEvents(event))
+			);
 			this.usersDepositsService.setLastBSCBlockProcessed(currentBlock);
+			return `Processed blocks from ${
+				latestBlockProcessed + 1
+			} to ${currentBlock}...`;
 		} catch (err) {
 			this.log.error(`Couldn't process BSC blocks`, err);
 			throw err;
@@ -173,6 +170,15 @@ class BSC {
 		this.log.debug(
 			`Detected a SwapToBan event. From: ${swap.bscWallet}, to: ${swap.banWallet}, amount: ${swap.amount}, hash: ${swap.hash}`
 		);
+		if (!swap.bscWallet) {
+			throw new Error("Missing BSC address in BSC event!");
+		}
+		if (!swap.banWallet) {
+			throw new Error("Missing BAN address in BSC event!");
+		}
+		if (!swap.amount) {
+			throw new Error("Missing amount in BSC event!");
+		}
 		// notify listeners
 		this.listeners.forEach((listener) => listener(swap));
 	}

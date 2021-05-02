@@ -54,7 +54,7 @@ describe("Banano Service", () => {
 			svc.sendBan.resolves("0xTHISROCKS");
 
 			// make a deposit
-			await svc.processUserDeposit(sender, amount, hash);
+			await svc.processUserDeposit(sender, amount, Date.now(), hash);
 
 			// expect for it to be received
 			expect(svc.receiveTransaction).to.be.calledOnce;
@@ -73,7 +73,7 @@ describe("Banano Service", () => {
 			svc.sendBan.resolves("0xTHISROCKS");
 
 			// make a deposit
-			await svc.processUserDeposit(sender, amount, hash);
+			await svc.processUserDeposit(sender, amount, Date.now(), hash);
 
 			// expect for it to be received
 			expect(svc.receiveTransaction).to.be.calledOnce;
@@ -87,11 +87,12 @@ describe("Banano Service", () => {
 			const sender = "ban_sender";
 			const amount: BigNumber = ethers.utils.parseEther("1");
 			const hash = "0xCAFEBABE";
+			const timestamp = Date.now();
 			depositsService.hasPendingClaim.withArgs(sender).resolves(true);
 			depositsService.confirmClaim.withArgs(sender).resolves(true);
 			depositsService.isClaimed.withArgs(sender).resolves(true);
 			depositsService.storeUserDeposit
-				.withArgs(sender, amount, hash)
+				.withArgs(sender, amount, timestamp, hash)
 				.resolves();
 
 			svc.receiveTransaction.resolves();
@@ -102,7 +103,7 @@ describe("Banano Service", () => {
 				.resolves(ethers.utils.parseEther("1"));
 
 			// make a deposit
-			await svc.processUserDeposit(sender, amount, hash);
+			await svc.processUserDeposit(sender, amount, timestamp, hash);
 
 			// expect for it to be received
 			expect(svc.receiveTransaction).to.be.calledOnce;
@@ -110,6 +111,7 @@ describe("Banano Service", () => {
 			expect(depositsService.storeUserDeposit).to.be.calledOnceWith(
 				sender,
 				amount,
+				timestamp,
 				hash
 			);
 		});
@@ -136,12 +138,13 @@ describe("Banano Service", () => {
 			it(`Send ${expected} BAN to cold wallet when hot wallet has ${hot} BAN and user made a deposit of ${deposit} BAN`, async () => {
 				const sender = "ban_sender";
 				const amount: BigNumber = ethers.utils.parseEther(deposit);
+				const timestamp = Date.now();
 				const hash = "0xCAFEBABE";
 				depositsService.hasPendingClaim.withArgs(sender).resolves(true);
 				depositsService.confirmClaim.withArgs(sender).resolves(true);
 				depositsService.isClaimed.withArgs(sender).resolves(true);
 				depositsService.storeUserDeposit
-					.withArgs(sender, amount, hash)
+					.withArgs(sender, amount, timestamp, hash)
 					.resolves();
 
 				svc.receiveTransaction.resolves();
@@ -151,7 +154,7 @@ describe("Banano Service", () => {
 				svc.sendBan.resolves("0xTHISROCKS");
 
 				// make a deposit
-				await svc.processUserDeposit(sender, amount, hash);
+				await svc.processUserDeposit(sender, amount, timestamp, hash);
 
 				// expect for it to be received
 				expect(svc.receiveTransaction).to.be.calledOnce;
@@ -159,6 +162,7 @@ describe("Banano Service", () => {
 				expect(depositsService.storeUserDeposit).to.be.calledOnceWith(
 					sender,
 					amount,
+					timestamp,
 					hash
 				);
 				// and BAN to be sent to cold wallet
@@ -172,12 +176,13 @@ describe("Banano Service", () => {
 		it("Don't send BAN to cold wallet if there is not enough BAN in hot wallet", async () => {
 			const sender = "ban_sender";
 			const amount: BigNumber = ethers.utils.parseEther("4");
+			const timestamp = Date.now();
 			const hash = "0xCAFEBABE";
 			depositsService.hasPendingClaim.withArgs(sender).resolves(true);
 			depositsService.confirmClaim.withArgs(sender).resolves(true);
 			depositsService.isClaimed.withArgs(sender).resolves(true);
 			depositsService.storeUserDeposit
-				.withArgs(sender, amount, hash)
+				.withArgs(sender, amount, timestamp, hash)
 				.resolves();
 
 			svc.receiveTransaction.resolves();
@@ -191,7 +196,7 @@ describe("Banano Service", () => {
 			// svc.sendBan.resolves("0xTHISROCKS");
 
 			// make a deposit
-			await svc.processUserDeposit(sender, amount, hash);
+			await svc.processUserDeposit(sender, amount, timestamp, hash);
 
 			// expect for it to be received
 			expect(svc.receiveTransaction).to.be.calledOnce;
@@ -199,6 +204,7 @@ describe("Banano Service", () => {
 			expect(depositsService.storeUserDeposit).to.be.calledOnceWith(
 				sender,
 				amount,
+				timestamp,
 				hash
 			);
 			// and no BAN to be sent to cold wallet
@@ -210,12 +216,13 @@ describe("Banano Service", () => {
 			const deposit = "0.01";
 			const sender = "ban_sender";
 			const amount: BigNumber = ethers.utils.parseEther(deposit);
+			const timestamp = Date.now();
 			const hash = "0xCAFEBABE";
 			depositsService.hasPendingClaim.withArgs(sender).resolves(true);
 			depositsService.confirmClaim.withArgs(sender).resolves(true);
 			depositsService.isClaimed.withArgs(sender).resolves(true);
 			depositsService.storeUserDeposit
-				.withArgs(sender, amount, hash)
+				.withArgs(sender, amount, timestamp, hash)
 				.resolves();
 
 			svc.receiveTransaction.resolves();
@@ -225,7 +232,7 @@ describe("Banano Service", () => {
 			svc.sendBan.resolves("0xTHISROCKS");
 
 			// make a deposit
-			await svc.processUserDeposit(sender, amount, hash);
+			await svc.processUserDeposit(sender, amount, timestamp, hash);
 
 			// expect for it to be received
 			expect(svc.receiveTransaction).to.be.calledOnce;
@@ -233,6 +240,7 @@ describe("Banano Service", () => {
 			expect(depositsService.storeUserDeposit).to.be.calledOnceWith(
 				sender,
 				amount,
+				timestamp,
 				hash
 			);
 			// and no BAN to be sent to cold wallet
