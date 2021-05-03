@@ -17,6 +17,7 @@ import JobListener from "./JobListener";
 const QUEUE_NAME = "pending-withdrawals-queue";
 
 class RedisPendingWithdrawalsQueue implements PendingWithdrawalsQueue {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	private pendingWithdrawalsQueue: Queue<Withdrawal, any, string>;
 
 	private pendingWithdrawalsQueueEvents: QueueEvents;
@@ -56,16 +57,19 @@ class RedisPendingWithdrawalsQueue implements PendingWithdrawalsQueue {
 				host: config.RedisHost,
 			},
 		});
+		const worker = new Worker(QUEUE_NAME, null, {
+			connection: {
+				host: config.RedisHost,
+			},
+		});
 		cron.schedule("* * * * *", async () => {
-			const worker = new Worker(QUEUE_NAME, null, {
-				connection: {
-					host: config.RedisHost,
-				},
-			});
-			try {
+			// check if there are pending withdrawals
+			let pending = await this.getPendingJobsCount();
+			while (pending > 0) {
+				// eslint-disable-next-line no-await-in-loop
 				await this.monitorPendingWithdrawals(worker);
-			} finally {
-				worker.close();
+				// eslint-disable-next-line no-await-in-loop
+				pending = await this.getPendingJobsCount();
 			}
 		});
 		cron.schedule("* * * * *", async () => {
@@ -86,12 +90,14 @@ class RedisPendingWithdrawalsQueue implements PendingWithdrawalsQueue {
 		});
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	registerProcessor(processor: Processor<Withdrawal, any, string>): void {
 		this.processor = processor;
 		this.log.debug("Registered new processor");
 	}
 
 	addJobListener(listener: JobListener): void {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		this.pendingWithdrawalsQueueEvents.on("completed", async (event: any) => {
 			this.log.debug(`Got: ${JSON.stringify(event)}`);
 			const { jobId } = event;
@@ -114,6 +120,7 @@ class RedisPendingWithdrawalsQueue implements PendingWithdrawalsQueue {
 		});
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	async addPendingWithdrawal(withdrawal: Withdrawal): Promise<any> {
 		this.pendingWithdrawalsQueue.add("pending-withdrawal", withdrawal, {
 			delay: 30_000,
@@ -144,6 +151,14 @@ class RedisPendingWithdrawalsQueue implements PendingWithdrawalsQueue {
 				await job.moveToFailed(err, QUEUE_NAME);
 			}
 		}
+	}
+
+	private async getPendingJobsCount(): Promise<number> {
+		const { wait, delayed } = await this.pendingWithdrawalsQueue.getJobCounts(
+			"wait",
+			"delayed"
+		);
+		return wait + delayed;
 	}
 }
 
