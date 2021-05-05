@@ -24,6 +24,8 @@ class RedisProcessingQueue implements ProcessingQueue {
 
 	private jobListener: JobListener;
 
+	public static PENDING_WITHDRAWAL_RETRY_DELAY = 1 * 60 * 1_000;
+
 	private log: Logger = config.Logger.getChildLogger();
 
 	public constructor() {
@@ -92,9 +94,11 @@ class RedisProcessingQueue implements ProcessingQueue {
 			listener.onJobCompleted(job.id, job.name, job.returnvalue);
 		});
 		this.worker.on("failed", async (job: Job) => {
-			this.log.error(`Job "${job.name}" (ID: ${job.id}) failed`);
-			this.log.error(`Failure reason is:\n${job.failedReason}`);
-			this.log.error(`Stacktrace is:\n${job.stacktrace}`);
+			if (!job.id.startsWith("pending-")) {
+				this.log.error(`Job "${job.name}" (ID: ${job.id}) failed`);
+				this.log.error(`Failure reason is:\n${job.failedReason}`);
+				this.log.error(`Stacktrace is:\n${job.stacktrace}`);
+			}
 		});
 	}
 
@@ -102,6 +106,7 @@ class RedisProcessingQueue implements ProcessingQueue {
 	async addBananoUserDeposit(deposit: BananoUserDeposit): Promise<any> {
 		this.processingQueue.add(OperationsNames.BananoDeposit, deposit, {
 			jobId: `${OperationsNames.BananoDeposit}-${deposit.sender}-${deposit.hash}`,
+			timestamp: deposit.timestamp,
 		});
 		this.log.debug(`Added banano deposit to queue: ${JSON.stringify(deposit)}`);
 	}
@@ -112,6 +117,7 @@ class RedisProcessingQueue implements ProcessingQueue {
 	): Promise<any> {
 		this.processingQueue.add(OperationsNames.BananoWithdrawal, withdrawal, {
 			jobId: `${OperationsNames.BananoWithdrawal}-${withdrawal.banWallet}-${withdrawal.timestamp}`,
+			timestamp: withdrawal.timestamp,
 		});
 		this.log.debug(
 			`Added banano withdrawal to queue: ${JSON.stringify(withdrawal)}`
@@ -119,9 +125,31 @@ class RedisProcessingQueue implements ProcessingQueue {
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async addBananoUserPendingWithdrawal(
+		_withdrawal: BananoUserWithdrawal
+	): Promise<any> {
+		const withdrawal = _withdrawal;
+		withdrawal.attempt = _withdrawal.attempt + 1;
+		this.processingQueue.add(OperationsNames.BananoWithdrawal, withdrawal, {
+			jobId: `pending-${OperationsNames.BananoWithdrawal}-${withdrawal.banWallet}-${withdrawal.timestamp}-attempt-${withdrawal.attempt}`,
+			delay:
+				withdrawal.attempt *
+				RedisProcessingQueue.PENDING_WITHDRAWAL_RETRY_DELAY,
+			timestamp: withdrawal.timestamp,
+			removeOnFail: true,
+		});
+		this.log.debug(
+			`Scheduled banano pending withdrawal attemp #${
+				withdrawal.attempt
+			} to queue: ${JSON.stringify(withdrawal)}`
+		);
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	async addSwapToWBan(swap: SwapBanToWBAN): Promise<any> {
 		this.processingQueue.add(OperationsNames.SwapToWBAN, swap, {
 			jobId: `${OperationsNames.SwapToWBAN}-${swap.from}-${swap.timestamp}`,
+			timestamp: swap.timestamp,
 		});
 		this.log.debug(`Added swap BAN -> wBAN to queue: ${JSON.stringify(swap)}`);
 	}
@@ -129,6 +157,7 @@ class RedisProcessingQueue implements ProcessingQueue {
 	async addSwapToBan(swap: SwapWBANToBan): Promise<any> {
 		this.processingQueue.add(OperationsNames.SwapToBAN, swap, {
 			jobId: `${OperationsNames.SwapToBAN}-${swap.bscWallet}-${swap.timestamp}`,
+			timestamp: swap.timestamp,
 		});
 		this.log.debug(`Added swap wBAN -> BAN to queue: ${JSON.stringify(swap)}`);
 	}

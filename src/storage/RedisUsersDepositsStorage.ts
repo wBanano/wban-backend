@@ -113,7 +113,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			`claims:${banAddress.toLowerCase()}:*`
 		);
 		const exists = claims.length > 0;
-		this.log.debug(
+		this.log.trace(
 			`Checked if there is a claim for ${banAddress.toLowerCase()}: ${exists}`
 		);
 		return exists;
@@ -124,7 +124,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			`claims:${banAddress.toLowerCase()}:${bscAddress.toLowerCase()}`
 		);
 		const exists = pendingClaims.length > 0;
-		this.log.debug(
+		this.log.trace(
 			`Checked if there is a claim for ${banAddress.toLowerCase()}: ${exists}`
 		);
 		return exists;

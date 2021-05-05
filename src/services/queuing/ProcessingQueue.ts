@@ -13,6 +13,9 @@ interface ProcessingQueue {
 
 	addBananoUserDeposit(deposit: BananoUserDeposit): Promise<any>;
 	addBananoUserWithdrawal(withdrawal: BananoUserWithdrawal): Promise<any>;
+	addBananoUserPendingWithdrawal(
+		withdrawal: BananoUserWithdrawal
+	): Promise<any>;
 
 	addSwapToWBan(swap: SwapBanToWBAN): Promise<string>;
 	addSwapToBan(swap: SwapWBANToBan): Promise<string>;

@@ -13,10 +13,8 @@ import WithdrawalRequest from "./models/requests/WithdrawalRequest";
 import config from "./config";
 import { ClaimResponse } from "./models/responses/ClaimResponse";
 import ProcessingQueue from "./services/queuing/ProcessingQueue";
-import PendingWithdrawalsQueue from "./services/queuing/PendingWithdrawalsQueue";
 import JobListener from "./services/queuing/JobListener";
 import RedisProcessingQueue from "./services/queuing/RedisProcessingQueue";
-import RedisPendingWithdrawalsQueue from "./services/queuing/RedisPendingWithdrawalsQueue";
 import RepeatableQueue from "./services/queuing/RepeatableQueue";
 import RedisRepeatableQueue from "./services/queuing/RedisRepeatableQueue";
 import History from "./models/responses/History";
@@ -35,14 +33,8 @@ const usersDepositsService: UsersDepositsService = new UsersDepositsService(
 	usersDepositsStorage
 );
 const processingQueue: ProcessingQueue = new RedisProcessingQueue();
-const pendingWithdrawalsQueue: PendingWithdrawalsQueue = new RedisPendingWithdrawalsQueue();
 const repeatableQueue: RepeatableQueue = new RedisRepeatableQueue();
-const svc = new Service(
-	usersDepositsService,
-	processingQueue,
-	pendingWithdrawalsQueue,
-	repeatableQueue
-);
+const svc = new Service(usersDepositsService, processingQueue, repeatableQueue);
 svc.start();
 
 app.get("/health", (req: Request, res: Response) => {
@@ -172,7 +164,7 @@ const jobListener: JobListener = {
 		if (!result) {
 			return;
 		}
-		log.warn(
+		log.debug(
 			`Job ${name} with id ${id} completed with result ${JSON.stringify(
 				result
 			)}`
@@ -193,7 +185,6 @@ const jobListener: JobListener = {
 	},
 };
 processingQueue.addJobListener(jobListener);
-pendingWithdrawalsQueue.addJobListener(jobListener);
 
 app.listen(PORT, async () => {
 	console.log(
