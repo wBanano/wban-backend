@@ -11,7 +11,6 @@ import InvalidOwner from "../../src/errors/InvalidOwner";
 import InvalidSignatureError from "../../src/errors/InvalidSignatureError";
 import { Banano } from "../../src/Banano";
 import ProcessingQueue from "../../src/services/queuing/ProcessingQueue";
-import PendingWithdrawalsQueue from "../../src/services/queuing/PendingWithdrawalsQueue";
 import RepeatableQueue from "../../src/services/queuing/RepeatableQueue";
 import BananoUserWithdrawal from "../../src/models/operations/BananoUserWithdrawal";
 import config from "../../src/config";
@@ -24,7 +23,6 @@ describe("Main Service", () => {
 	let svc: Service = null;
 	let depositsService: sinon.StubbedInstance<UsersDepositsService> = null;
 	let processingQueue: sinon.StubbedInstance<ProcessingQueue> = null;
-	let pendingWithdrawalsQueue: sinon.StubbedInstance<PendingWithdrawalsQueue> = null;
 	let repeatableQueue: sinon.StubbedInstance<RepeatableQueue> = null;
 	let bsc: sinon.StubbedInstance<BSC> = null;
 	let banano: sinon.StubbedInstance<Banano> = null;
@@ -33,15 +31,9 @@ describe("Main Service", () => {
 		depositsService = sinon.stubInterface<UsersDepositsService>();
 		processingQueue = sinon.stubInterface<ProcessingQueue>();
 		repeatableQueue = sinon.stubInterface<RepeatableQueue>();
-		pendingWithdrawalsQueue = sinon.stubInterface<PendingWithdrawalsQueue>();
 		bsc = sinon.stubInterface<BSC>();
 		banano = sinon.stubInterface<Banano>();
-		svc = new Service(
-			depositsService,
-			processingQueue,
-			pendingWithdrawalsQueue,
-			repeatableQueue
-		);
+		svc = new Service(depositsService, processingQueue, repeatableQueue);
 		svc.bsc = bsc;
 		svc.banano = banano;
 	});
@@ -167,7 +159,7 @@ describe("Main Service", () => {
 				signature:
 					"0xc7f21062ef2c672e8cc77cecfdf532f39bcf6791e7f41266491fe649bedeaec9443e963400882d6dc46c8e10c033528a7bc5a517e136296d01be339baf6e9efb1b",
 				timestamp: Date.now(),
-				checkUserBalance: true,
+				attempt: 0,
 			};
 			depositsService.containsUserWithdrawalRequest
 				.withArgs(withdrawal)
@@ -201,7 +193,7 @@ describe("Main Service", () => {
 				signature:
 					"0xc7f21062ef2c672e8cc77cecfdf532f39bcf6791e7f41266491fe649bedeaec9443e963400882d6dc46c8e10c033528a7bc5a517e136296d01be339baf6e9efb1b",
 				timestamp: Date.now(),
-				checkUserBalance: true,
+				attempt: 0,
 			};
 			depositsService.containsUserWithdrawalRequest
 				.withArgs(withdrawal)
@@ -218,7 +210,7 @@ describe("Main Service", () => {
 			// make the withdrawal...
 			await svc.processWithdrawBAN(withdrawal);
 			// ... expect it to be added to the pending withdrawals queue
-			expect(pendingWithdrawalsQueue.addPendingWithdrawal).to.have.been
+			expect(processingQueue.addBananoUserPendingWithdrawal).to.have.been
 				.calledOnce;
 			// ... and that no withdrawal was processed
 			expect(banano.sendBan).to.have.not.been.called;
@@ -267,7 +259,7 @@ describe("Main Service", () => {
 				signature:
 					"0xc7f21062ef2c672e8cc77cecfdf532f39bcf6791e7f41266491fe649bedeaec9443e963400882d6dc46c8e10c033528a7bc5a517e136296d01be339baf6e9efb1b",
 				timestamp: Date.now(),
-				checkUserBalance: true,
+				attempt: 0,
 			};
 			depositsService.containsUserWithdrawalRequest
 				.withArgs(withdrawal)
