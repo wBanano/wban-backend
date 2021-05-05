@@ -68,7 +68,6 @@ class BSC {
 						wbanBalance: ethers.utils.formatEther(wbanBalance),
 						hash: event.transactionHash,
 						timestamp,
-						checkUserBalance: false,
 					});
 				}
 			);

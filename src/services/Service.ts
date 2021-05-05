@@ -7,13 +7,10 @@ import { UsersDepositsService } from "./UsersDepositsService";
 import InvalidSignatureError from "../errors/InvalidSignatureError";
 import InvalidOwner from "../errors/InvalidOwner";
 import InsufficientBalanceError from "../errors/InsufficientBalanceError";
-import InsufficientHotWalletBalanceError from "../errors/InsufficientHotWalletBalanceError";
 import { ClaimResponse } from "../models/responses/ClaimResponse";
 import { BSC } from "../BSC";
 import ProcessingQueue from "./queuing/ProcessingQueue";
-import PendingWithdrawalsQueue from "./queuing/PendingWithdrawalsQueue";
 import { OperationsNames } from "../models/operations/Operation";
-import Withdrawal from "../models/operations/Withdrawal";
 import BananoUserWithdrawal from "../models/operations/BananoUserWithdrawal";
 import SwapBanToWBAN from "../models/operations/SwapBanToWBAN";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
@@ -29,8 +26,6 @@ class Service {
 
 	private processingQueue: ProcessingQueue;
 
-	private pendingWithdrawalsQueue: PendingWithdrawalsQueue;
-
 	private repeatableQueue: RepeatableQueue;
 
 	private log: Logger = config.Logger.getChildLogger();
@@ -38,11 +33,9 @@ class Service {
 	constructor(
 		usersDepositsService: UsersDepositsService,
 		processingQueue: ProcessingQueue,
-		pendingWithdrawalsQueue: PendingWithdrawalsQueue,
 		repeatableQueue: RepeatableQueue
 	) {
 		this.processingQueue = processingQueue;
-		this.pendingWithdrawalsQueue = pendingWithdrawalsQueue;
 		this.repeatableQueue = repeatableQueue;
 		this.banano = new Banano(
 			config.BananoUsersDepositsHotWallet,
@@ -57,7 +50,7 @@ class Service {
 			OperationsNames.BananoWithdrawal,
 			async (job) => {
 				const withdrawal: BananoUserWithdrawal = job.data;
-				const processor = this.withdrawalProcessor(true, withdrawal.signature);
+				const processor = this.withdrawalProcessor(withdrawal.signature);
 				return processor(job);
 			}
 		);
@@ -100,9 +93,6 @@ class Service {
 				};
 			}
 		);
-		this.pendingWithdrawalsQueue.registerProcessor(
-			this.withdrawalProcessor(false)
-		);
 		this.bsc = new BSC(usersDepositsService, this.repeatableQueue);
 		this.bsc.onSwapToBAN((swap: SwapWBANToBan) => this.swapToBAN(swap));
 		this.usersDepositsService = usersDepositsService;
@@ -110,7 +100,6 @@ class Service {
 
 	start(): void {
 		this.processingQueue.start();
-		this.pendingWithdrawalsQueue.start();
 		this.repeatableQueue.start();
 		this.banano.subscribeToBananoNotificationsForWallet();
 	}
@@ -164,13 +153,12 @@ class Service {
 			bscWallet,
 			signature,
 			timestamp,
-			checkUserBalance: true,
+			attempt: 0,
 		});
 	}
 
 	async processWithdrawBAN(
-		withdrawal: Withdrawal,
-		queuePendingWithdrawals = true,
+		withdrawal: BananoUserWithdrawal,
 		signature?: string
 	): Promise<string> {
 		const { banWallet, amount, bscWallet, timestamp } = withdrawal;
@@ -217,40 +205,33 @@ class Service {
 			throw new Error("Can't withdraw negative amounts of BAN");
 		}
 
-		if (withdrawal.checkUserBalance) {
-			// check if deposits are greater than or equal to amount to withdraw
-			const availableBalance: BigNumber = await this.usersDepositsService.getUserAvailableBalance(
-				banWallet
-			);
-			if (!availableBalance.gte(withdrawnAmount)) {
-				const message = `User "${banWallet}" has not deposited enough BAN for a withdrawal of ${amount} BAN. Deposited balance is: ${ethers.utils.formatEther(
-					availableBalance
-				)} BAN`;
-				this.log.warn(message);
-				throw new InsufficientBalanceError(message);
-			}
+		// check if deposits are greater than or equal to amount to withdraw
+		const availableBalance: BigNumber = await this.usersDepositsService.getUserAvailableBalance(
+			banWallet
+		);
+		if (!availableBalance.gte(withdrawnAmount)) {
+			const message = `User "${banWallet}" has not deposited enough BAN for a withdrawal of ${amount} BAN. Deposited balance is: ${ethers.utils.formatEther(
+				availableBalance
+			)} BAN`;
+			this.log.warn(message);
+			throw new InsufficientBalanceError(message);
 		}
 
 		// send the BAN to the user
-		const { pending, hash } = await this.eventuallySendBan(
-			withdrawal,
-			queuePendingWithdrawals
-		);
+		const { pending, hash } = await this.eventuallySendBan(withdrawal);
 
 		if (pending) {
 			return "";
 		}
 
 		// decrease user deposits
-		if (withdrawal.checkUserBalance) {
-			await this.usersDepositsService.storeUserWithdrawal(
-				banWallet,
-				withdrawnAmount,
-				timestamp,
-				hash
-			);
-		}
-		this.log.info(`Withdrawed ${amount} BAN to "${banWallet}"`);
+		await this.usersDepositsService.storeUserWithdrawal(
+			banWallet,
+			withdrawnAmount,
+			timestamp,
+			hash
+		);
+		this.log.info(`Withdrew ${amount} BAN to "${banWallet}"`);
 		return hash;
 	}
 
@@ -366,7 +347,7 @@ class Service {
 		signature: string,
 		expected: string
 	): boolean {
-		this.log.debug(`Checking signature '${signature}'`);
+		this.log.trace(`Checking signature '${signature}'`);
 		const author = ethers.utils.verifyMessage(expected, signature);
 		const sanitizedAddress = ethers.utils.getAddress(bscWallet);
 		if (author !== sanitizedAddress) {
@@ -378,9 +359,8 @@ class Service {
 	}
 
 	private async eventuallySendBan(
-		withdrawal: Withdrawal,
-		queuePendingWithdrawals = false
-	): Promise<any> {
+		withdrawal: BananoUserWithdrawal
+	): Promise<{ pending: boolean; hash?: string }> {
 		const amountStr = withdrawal.amount;
 		const amount: BigNumber = ethers.utils.parseEther(amountStr);
 		// check if hot wallet balance is greater than or equal to amount to withdraw
@@ -393,11 +373,8 @@ class Service {
 					hotWalletBalance
 				)} BAN is not enough to proceed with a withdrawal of ${amountStr} BAN. Adding a pending withdrawal to queue.`
 			);
-			if (queuePendingWithdrawals) {
-				this.pendingWithdrawalsQueue.addPendingWithdrawal(withdrawal);
-				return { pending: true };
-			}
-			throw new InsufficientHotWalletBalanceError(amount, hotWalletBalance);
+			await this.processingQueue.addBananoUserPendingWithdrawal(withdrawal);
+			return { pending: true };
 		}
 		// send the BAN to the user
 		const hash = await this.banano.sendBan(withdrawal.banWallet, amount);
@@ -405,16 +382,11 @@ class Service {
 	}
 
 	private withdrawalProcessor(
-		enqueue: boolean,
 		signature?: string
-	): Processor<Withdrawal, any, string> {
+	): Processor<BananoUserWithdrawal, any, string> {
 		return async (job) => {
-			const withdrawal: Withdrawal = job.data;
-			const hash = await this.processWithdrawBAN(
-				withdrawal,
-				enqueue,
-				signature
-			);
+			const withdrawal: BananoUserWithdrawal = job.data;
+			const hash = await this.processWithdrawBAN(withdrawal, signature);
 			if (hash) {
 				return {
 					banWallet: withdrawal.banWallet,
@@ -426,10 +398,8 @@ class Service {
 					),
 					transaction: hash,
 				};
-				// eslint-disable-next-line no-else-return
-			} else if (!enqueue) {
-				throw new Error("Can't withdraw");
-			} else {
+			}
+			if (withdrawal.attempt === 1) {
 				return {
 					banWallet: withdrawal.banWallet,
 					withdrawal: withdrawal.amount,
@@ -441,6 +411,8 @@ class Service {
 					transaction: "",
 				};
 			}
+			// throw an error just to get the job as failed and removed as a new one was created instead
+			throw new Error("Old pending withdrawal request replaced by a new one");
 		};
 	}
 }
