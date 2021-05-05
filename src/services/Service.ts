@@ -231,7 +231,7 @@ class Service {
 			timestamp,
 			hash
 		);
-		this.log.info(`Withdrew ${amount} BAN to "${banWallet}"`);
+		this.log.info(`Withdrew ${amount} BAN to "${banWallet} with txn ${hash}"`);
 		return hash;
 	}
 

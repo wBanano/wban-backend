@@ -60,6 +60,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			});
 	}
 
+	/*
 	async lockBalance(from: string): Promise<void> {
 		this.redis.set(`locks:ban-balance:${from.toLowerCase()}`, "1");
 	}
@@ -73,6 +74,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			(await this.redis.exists(`locks:ban-balance:${from.toLowerCase()}`)) === 1
 		);
 	}
+	*/
 
 	async hasPendingClaim(banAddress: string): Promise<boolean> {
 		const pendingClaims = await this.redis.keys(
@@ -207,7 +209,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	): Promise<void> {
 		const banAddress = _banAddress.toLowerCase();
 		this.log.info(
-			`Storing user withdrawal to: ${banAddress}, amount: ${amount} BAN`
+			`Storing user withdrawal to: ${banAddress}, amount: ${amount} BAN, hash: ${hash}`
 		);
 		this.redlock
 			.lock(`locks:ban-balance:${banAddress}`, 1_000)
@@ -249,14 +251,14 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	}
 
 	async containsUserWithdrawalRequest(
-		from: string,
+		banAddress: string,
 		timestamp: number
 	): Promise<boolean> {
 		this.log.info(
-			`Checking if user withdrawal request from ${from.toLowerCase()} at ${timestamp} was already processed...`
+			`Checking if user withdrawal request from ${banAddress.toLowerCase()} at ${timestamp} was already processed...`
 		);
 		const isAlreadyStored = await this.redis.zcount(
-			`withdrawals:${from.toLowerCase()}`,
+			`withdrawals:${banAddress.toLowerCase()}`,
 			timestamp,
 			timestamp
 		);
