@@ -78,7 +78,7 @@ class UsersDepositsService {
 		withdrawal: Withdrawal
 	): Promise<boolean> {
 		return this.usersDepositsStorage.containsUserWithdrawalRequest(
-			withdrawal.bscWallet,
+			withdrawal.banWallet,
 			withdrawal.timestamp
 		);
 	}

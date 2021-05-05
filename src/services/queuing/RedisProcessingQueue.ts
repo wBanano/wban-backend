@@ -84,13 +84,13 @@ class RedisProcessingQueue implements ProcessingQueue {
 
 	addJobListener(listener: JobListener): void {
 		this.worker.on("completed", async (job: Job) => {
-			this.log.info(
+			this.log.debug(
 				`Job "${job.name}" (ID: ${job.id}) completed with: ${JSON.stringify(
 					job.returnvalue
 				)}`
 			);
 			// const job = await Job.fromId(this.processingQueue, jobId);
-			this.log.info(`Completed job: ${JSON.stringify(job)}`);
+			this.log.trace(`Completed job: ${JSON.stringify(job)}`);
 			listener.onJobCompleted(job.id, job.name, job.returnvalue);
 		});
 		this.worker.on("failed", async (job: Job) => {
@@ -130,14 +130,18 @@ class RedisProcessingQueue implements ProcessingQueue {
 	): Promise<any> {
 		const withdrawal = _withdrawal;
 		withdrawal.attempt = _withdrawal.attempt + 1;
-		this.processingQueue.add(OperationsNames.BananoWithdrawal, withdrawal, {
-			jobId: `pending-${OperationsNames.BananoWithdrawal}-${withdrawal.banWallet}-${withdrawal.timestamp}-attempt-${withdrawal.attempt}`,
-			delay:
-				withdrawal.attempt *
-				RedisProcessingQueue.PENDING_WITHDRAWAL_RETRY_DELAY,
-			timestamp: withdrawal.timestamp,
-			removeOnFail: true,
-		});
+		await this.processingQueue.add(
+			OperationsNames.BananoWithdrawal,
+			withdrawal,
+			{
+				jobId: `pending-${OperationsNames.BananoWithdrawal}-${withdrawal.banWallet}-${withdrawal.timestamp}-attempt-${withdrawal.attempt}`,
+				delay:
+					withdrawal.attempt *
+					RedisProcessingQueue.PENDING_WITHDRAWAL_RETRY_DELAY,
+				timestamp: withdrawal.timestamp,
+				removeOnFail: true,
+			}
+		);
 		this.log.debug(
 			`Scheduled banano pending withdrawal attemp #${
 				withdrawal.attempt
