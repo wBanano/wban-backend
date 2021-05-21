@@ -15,8 +15,8 @@ import { ClaimResponse } from "./models/responses/ClaimResponse";
 import ProcessingQueue from "./services/queuing/ProcessingQueue";
 import JobListener from "./services/queuing/JobListener";
 import RedisProcessingQueue from "./services/queuing/RedisProcessingQueue";
-import RepeatableQueue from "./services/queuing/RepeatableQueue";
-import RedisRepeatableQueue from "./services/queuing/RedisRepeatableQueue";
+import BSCScanQueue from "./services/queuing/BSCScanQueue";
+import RedisBSCScanQueue from "./services/queuing/RedisBSCScanQueue";
 import History from "./models/responses/History";
 
 const app: Application = express();
@@ -33,8 +33,8 @@ const usersDepositsService: UsersDepositsService = new UsersDepositsService(
 	usersDepositsStorage
 );
 const processingQueue: ProcessingQueue = new RedisProcessingQueue();
-const repeatableQueue: RepeatableQueue = new RedisRepeatableQueue();
-const svc = new Service(usersDepositsService, processingQueue, repeatableQueue);
+const bscScanQueue: BSCScanQueue = new RedisBSCScanQueue(usersDepositsService);
+const svc = new Service(usersDepositsService, processingQueue, bscScanQueue);
 svc.start();
 
 app.get("/health", (req: Request, res: Response) => {
