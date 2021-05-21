@@ -67,7 +67,7 @@ class BSC {
 						amount: ethers.utils.formatEther(amount),
 						wbanBalance: ethers.utils.formatEther(wbanBalance),
 						hash: event.transactionHash,
-						timestamp,
+						timestamp: timestamp * 1_000,
 					});
 				}
 			);
@@ -147,7 +147,7 @@ class BSC {
 						amount: ethers.utils.formatEther(BigNumber.from(amount)),
 						wbanBalance: ethers.utils.formatEther(wbanBalance),
 						hash: log.transactionHash,
-						timestamp,
+						timestamp: timestamp * 1_000,
 						checkUserBalance: false,
 					};
 				})
