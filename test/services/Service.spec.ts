@@ -11,7 +11,7 @@ import InvalidOwner from "../../src/errors/InvalidOwner";
 import InvalidSignatureError from "../../src/errors/InvalidSignatureError";
 import { Banano } from "../../src/Banano";
 import ProcessingQueue from "../../src/services/queuing/ProcessingQueue";
-import RepeatableQueue from "../../src/services/queuing/RepeatableQueue";
+import BSCScanQueue from "../../src/services/queuing/BSCScanQueue";
 import BananoUserWithdrawal from "../../src/models/operations/BananoUserWithdrawal";
 import config from "../../src/config";
 
@@ -23,17 +23,17 @@ describe("Main Service", () => {
 	let svc: Service = null;
 	let depositsService: sinon.StubbedInstance<UsersDepositsService> = null;
 	let processingQueue: sinon.StubbedInstance<ProcessingQueue> = null;
-	let repeatableQueue: sinon.StubbedInstance<RepeatableQueue> = null;
+	let bscScanQueue: sinon.StubbedInstance<BSCScanQueue> = null;
 	let bsc: sinon.StubbedInstance<BSC> = null;
 	let banano: sinon.StubbedInstance<Banano> = null;
 
 	beforeEach(async () => {
 		depositsService = sinon.stubInterface<UsersDepositsService>();
 		processingQueue = sinon.stubInterface<ProcessingQueue>();
-		repeatableQueue = sinon.stubInterface<RepeatableQueue>();
+		bscScanQueue = sinon.stubInterface<BSCScanQueue>();
 		bsc = sinon.stubInterface<BSC>();
 		banano = sinon.stubInterface<Banano>();
-		svc = new Service(depositsService, processingQueue, repeatableQueue);
+		svc = new Service(depositsService, processingQueue, bscScanQueue);
 		svc.bsc = bsc;
 		svc.banano = banano;
 	});

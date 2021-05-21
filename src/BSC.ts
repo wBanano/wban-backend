@@ -9,7 +9,7 @@ import SwapWBANToBan from "./models/operations/SwapWBANToBan";
 import { SwapToBanEventListener } from "./models/listeners/SwapToBanEventListener";
 import { UsersDepositsService } from "./services/UsersDepositsService";
 import config from "./config";
-import RepeatableQueue from "./services/queuing/RepeatableQueue";
+import BSCScanQueue from "./services/queuing/BSCScanQueue";
 
 class BSC {
 	private wBAN: WBANToken;
@@ -26,7 +26,7 @@ class BSC {
 
 	constructor(
 		usersDepositsService: UsersDepositsService,
-		repeatableQueue: RepeatableQueue
+		bscScanQueue: BSCScanQueue
 	) {
 		this.usersDepositsService = usersDepositsService;
 
@@ -75,13 +75,10 @@ class BSC {
 				config.BinanceSmartChainWalletPendingTransactionsThreadEnabled === true
 			) {
 				// eslint-disable-next-line @typescript-eslint/no-unused-vars
-				repeatableQueue.registerProcessor("bsc-scan", async (job) => {
-					return this.processBlocks();
+				bscScanQueue.registerProcessor("bsc-scan", async (job) => {
+					const { blockFrom, blockTo } = job.data;
+					return this.processBlocks(blockFrom, blockTo);
 				});
-				// scan BSC blockchain every 30 seconds
-				repeatableQueue
-					.schedulePeriodicJob("bsc-scan", 30_000)
-					.then(() => repeatableQueue.start());
 			} else {
 				this.log.warn(
 					"Ignoring checks of pending transactions. Only do this for running tests!"
@@ -120,19 +117,16 @@ class BSC {
 		};
 	}
 
-	async processBlocks(): Promise<string> {
+	private async processBlocks(
+		blockFrom: number,
+		blockTo: number
+	): Promise<string> {
 		try {
-			const latestBlockProcessed: number = await this.usersDepositsService.getLastBSCBlockProcessed();
-			const currentBlock: number = await this.provider.getBlockNumber();
-			this.log.info(
-				`Processing blocks from ${
-					latestBlockProcessed + 1
-				} to ${currentBlock}...`
-			);
+			this.log.info(`Processing blocks from ${blockFrom} to ${blockTo}...`);
 			const logs: ethers.Event[] = await this.wBAN.queryFilter(
 				this.wBAN.filters.SwapToBan(null, null, null),
-				latestBlockProcessed + 1,
-				currentBlock
+				blockFrom,
+				blockTo
 			);
 			const events: SwapWBANToBan[] = await Promise.all(
 				logs.map(async (log) => {
@@ -155,10 +149,8 @@ class BSC {
 			await Promise.all(
 				events.map((event) => this.handleSwapToBanEvents(event))
 			);
-			this.usersDepositsService.setLastBSCBlockProcessed(currentBlock);
-			return `Processed blocks from ${
-				latestBlockProcessed + 1
-			} to ${currentBlock}...`;
+			this.usersDepositsService.setLastBSCBlockProcessed(blockTo);
+			return `Processed blocks from ${blockFrom} to ${blockTo}...`;
 		} catch (err) {
 			this.log.error(`Couldn't process BSC blocks`, err);
 			throw err;

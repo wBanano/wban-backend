@@ -14,7 +14,7 @@ import { OperationsNames } from "../models/operations/Operation";
 import BananoUserWithdrawal from "../models/operations/BananoUserWithdrawal";
 import SwapBanToWBAN from "../models/operations/SwapBanToWBAN";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
-import RepeatableQueue from "./queuing/RepeatableQueue";
+import BSCScanQueue from "./queuing/BSCScanQueue";
 import History from "../models/responses/History";
 
 class Service {
@@ -26,17 +26,17 @@ class Service {
 
 	private processingQueue: ProcessingQueue;
 
-	private repeatableQueue: RepeatableQueue;
+	private bscScanQueue: BSCScanQueue;
 
 	private log: Logger = config.Logger.getChildLogger();
 
 	constructor(
 		usersDepositsService: UsersDepositsService,
 		processingQueue: ProcessingQueue,
-		repeatableQueue: RepeatableQueue
+		bscScanQueue: BSCScanQueue
 	) {
 		this.processingQueue = processingQueue;
-		this.repeatableQueue = repeatableQueue;
+		this.bscScanQueue = bscScanQueue;
 		this.banano = new Banano(
 			config.BananoUsersDepositsHotWallet,
 			config.BananoUsersDepositsColdWallet,
@@ -93,14 +93,14 @@ class Service {
 				};
 			}
 		);
-		this.bsc = new BSC(usersDepositsService, this.repeatableQueue);
+		this.bsc = new BSC(usersDepositsService, this.bscScanQueue);
 		this.bsc.onSwapToBAN((swap: SwapWBANToBan) => this.swapToBAN(swap));
 		this.usersDepositsService = usersDepositsService;
 	}
 
 	start(): void {
 		this.processingQueue.start();
-		this.repeatableQueue.start();
+		this.bscScanQueue.start();
 		this.banano.subscribeToBananoNotificationsForWallet();
 	}
 
