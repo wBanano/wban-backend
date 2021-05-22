@@ -342,6 +342,10 @@ class Service {
 		return history;
 	}
 
+	async getPendingWithdrawalsAmount(): Promise<BigNumber> {
+		return this.processingQueue.getPendingWithdrawalsAmount();
+	}
+
 	checkSignature(
 		bscWallet: string,
 		signature: string,

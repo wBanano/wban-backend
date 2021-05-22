@@ -1,4 +1,5 @@
 import { Processor } from "bullmq";
+import { BigNumber } from "ethers";
 import JobListener from "./JobListener";
 import { OperationsNames } from "../../models/operations/Operation";
 import BananoUserDeposit from "../../models/operations/BananoUserDeposit";
@@ -19,6 +20,8 @@ interface ProcessingQueue {
 
 	addSwapToWBan(swap: SwapBanToWBAN): Promise<string>;
 	addSwapToBan(swap: SwapWBANToBan): Promise<string>;
+
+	getPendingWithdrawalsAmount(): Promise<BigNumber>;
 }
 
 export default ProcessingQueue;

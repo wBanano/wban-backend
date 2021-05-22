@@ -1,6 +1,7 @@
 import { Queue, Processor, QueueScheduler, Job, QueueEvents } from "bullmq";
 import { Logger } from "tslog";
 import cron from "node-cron";
+import { ethers, BigNumber } from "ethers";
 import { Operation, OperationsNames } from "../../models/operations/Operation";
 import BananoUserDeposit from "../../models/operations/BananoUserDeposit";
 import BananoUserWithdrawal from "../../models/operations/BananoUserWithdrawal";
@@ -164,6 +165,30 @@ class RedisProcessingQueue implements ProcessingQueue {
 			timestamp: swap.timestamp,
 		});
 		this.log.debug(`Added swap wBAN -> BAN to queue: ${JSON.stringify(swap)}`);
+	}
+
+	async getPendingWithdrawalsAmount(): Promise<BigNumber> {
+		// get waiting jobs
+		const waitingJobs = await this.processingQueue.getWaiting(0, 1_000_000);
+		const delayedJobs = await this.processingQueue.getDelayed(0, 1_000_000);
+		const allJobs = waitingJobs.concat(delayedJobs);
+		return (
+			allJobs
+				// safeguard for pending withdrawals, although we don't expect anything else
+				.filter((job: Job) =>
+					job.id.startsWith(`pending-${OperationsNames.BananoWithdrawal}`)
+				)
+				// extract withdrawal amount
+				.map((job: Job) => {
+					const withdrawal = job.data as BananoUserWithdrawal;
+					return ethers.utils.parseEther(withdrawal.amount);
+				})
+				// sum all pending amounts
+				.reduce(
+					(acc: BigNumber, amount: BigNumber) => acc.add(amount),
+					BigNumber.from(0)
+				)
+		);
 	}
 }
 

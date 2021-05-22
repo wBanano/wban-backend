@@ -78,6 +78,13 @@ app.post("/withdrawals/ban", async (req: Request, res: Response) => {
 	res.status(201).send();
 });
 
+app.get("/withdrawals/pending", async (req: Request, res: Response) => {
+	const balance = await svc.getPendingWithdrawalsAmount();
+	res.send({
+		amount: ethers.utils.formatEther(balance),
+	});
+});
+
 app.post("/claim", async (req: Request, res: Response) => {
 	// TODO: make sure all required parameters are sent!
 	const claimRequest: ClaimRequest = req.body as ClaimRequest;
