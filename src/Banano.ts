@@ -127,6 +127,7 @@ class Banano {
 			);
 			this.log.error("Ignoring this deposit");
 			this.log.trace(`Received message ${JSON.stringify(notification)}`);
+			return;
 		}
 		// record the user deposit
 		await this.queueUserDeposit(sender, amount, timestamp, hash);
@@ -142,7 +143,7 @@ class Banano {
 			action: "subscribe",
 			topic: "confirmation",
 			options: {
-				all_local_accounts: true,
+				all_local_accounts: false,
 				accounts: [this.usersDepositsHotWallet],
 			},
 		};
