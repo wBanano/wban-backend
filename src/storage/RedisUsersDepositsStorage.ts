@@ -8,7 +8,7 @@ import config from "../config";
 
 /**
  * Redis storage explanations:
- * - `ban-balances`: map whose key is the BAN address and whose value is the BAN balance as a big number
+ * - `ban-balance`: map whose key is the BAN address and whose value is the BAN balance as a big number
  * - `deposits:${ban_address}`: sorted set (by timestamp) of all BAN deposits transactions hash
  * - `withdrawals:${ban_address}`: sorted set (by timestamp) of all BAN withdrawals TODO: date vs hash issue
  * - `swaps:ban-to-wban:${ban_address}`: sorted set (by timestamp) of all BAN -> wBAN receipts generated

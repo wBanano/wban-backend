@@ -9,7 +9,7 @@
 		"test": "NODE_ENV=test yarn nyc --reporter=text --reporter=html --check-coverage=true mocha",
 		"lint": "pretty-quick --staged && lint-staged"
 	},
-	"author": "Jerome Bernard <jerome.bernard@gmail.com>",
+	"author": "Wrap That Potassium <wrap-that-potassium@protonmail.com>",
 	"license": "MIT",
 	"devDependencies": {
 		"@types/chai": "^4.2.17",
