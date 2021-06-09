@@ -196,31 +196,35 @@ class Banano {
 			const transactionsHashes = [...Object.keys(walletPendingTransactions)];
 			// eslint-disable-next-line no-restricted-syntax
 			for (const hash of transactionsHashes) {
-				const transaction = walletPendingTransactions[hash];
-				this.log.debug(`Transaction is: ${JSON.stringify(transaction)}`);
-				const { amount } = transaction;
-				const sender = transaction.source;
-				const banAmount: BigNumber = BigNumber.from(
-					amount.substring(0, amount.length - 11)
-				);
-				const timestamp = Date.now(); // TODO: replace this with local_timestamp from block_info
-				// filter transactions sent by the users deposits wallets
-				if (
-					sender === this.usersDepositsHotWallet ||
-					sender === this.usersDepositsColdWallet
-				) {
+				try {
+					const transaction = walletPendingTransactions[hash];
+					this.log.debug(`Transaction is: ${JSON.stringify(transaction)}`);
+					const { amount } = transaction;
+					const sender = transaction.source;
+					const banAmount: BigNumber = BigNumber.from(
+						amount.substring(0, amount.length - 11)
+					);
+					const timestamp = Date.now(); // TODO: replace this with local_timestamp from block_info
+					// filter transactions sent by the users deposits wallets
+					if (
+						sender === this.usersDepositsHotWallet ||
+						sender === this.usersDepositsColdWallet
+					) {
+						// eslint-disable-next-line no-await-in-loop
+						await this.receiveTransaction(hash);
+						return;
+					}
+					this.log.debug(
+						`Got missed transaction of ${ethers.utils.formatEther(
+							banAmount
+						)} BAN from ${sender} in transaction "${hash}"`
+					);
+					// record the user deposit
 					// eslint-disable-next-line no-await-in-loop
-					await this.receiveTransaction(hash);
-					return;
+					await this.queueUserDeposit(sender, banAmount, timestamp, hash);
+				} catch (err) {
+					console.error(err);
 				}
-				this.log.debug(
-					`Got missed transaction of ${ethers.utils.formatEther(
-						banAmount
-					)} BAN from ${sender} in transaction "${hash}"`
-				);
-				// record the user deposit
-				// eslint-disable-next-line no-await-in-loop
-				await this.queueUserDeposit(sender, banAmount, timestamp, hash);
 			}
 		} else {
 			this.log.debug("No pending transactions...");
