@@ -48,7 +48,7 @@ class Banano {
 			OperationsNames.BananoDeposit,
 			async (job) => {
 				const deposit: BananoUserDeposit = job.data;
-				await this.processUserDeposit(
+				const result = await this.processUserDeposit(
 					deposit.sender,
 					ethers.utils.parseEther(deposit.amount),
 					deposit.timestamp,
@@ -62,6 +62,7 @@ class Banano {
 							deposit.sender
 						)
 					),
+					rejected: !result,
 				};
 			}
 		);
@@ -250,7 +251,7 @@ class Banano {
 		amount: BigNumber,
 		timestamp: number,
 		hash: string
-	): Promise<void> {
+	): Promise<boolean> {
 		this.log.info(
 			`Processing user deposit transaction "${hash}" from wallet "${sender}"`
 		);
@@ -272,6 +273,7 @@ class Banano {
 			// send back the BAN!
 			try {
 				await this.sendBan(sender, amount);
+				return false;
 			} catch (err) {
 				this.log.error("Unexpected error", err);
 				throw err;
@@ -288,6 +290,7 @@ class Banano {
 				// send back the BAN!
 				try {
 					await this.sendBan(sender, amount);
+					return false;
 				} catch (err) {
 					this.log.error("Unexpected error", err);
 					throw err;
@@ -301,6 +304,7 @@ class Banano {
 					hash
 				);
 				await this.eventuallySendToColdWallet(amount);
+				return true;
 			}
 		}
 	}
