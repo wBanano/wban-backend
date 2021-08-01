@@ -152,7 +152,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		this.log.info(
 			`Storing user deposit from: ${banAddress}, amount: ${amount} BAN, hash: ${hash}`
 		);
-		this.redlock
+		return this.redlock
 			.lock(`locks:ban-balance:${banAddress}`, 1_000)
 			.then(async (lock) => {
 				let rawBalance: string | null;
@@ -183,6 +183,9 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 				return lock.unlock().catch((err) => this.log.error(err));
 			})
 			.catch((err) => {
+				this.log.error(
+					`Couldn't store user deposit from: ${banAddress}, amount: ${amount} BAN, hash: ${hash}`
+				);
 				throw err;
 			});
 	}
@@ -393,7 +396,10 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	}
 
 	async setLastBSCBlockProcessed(block: number): Promise<void> {
-		this.redis.set("bsc:blocks:latest", block.toString());
+		const lastBlockProcessed = await this.getLastBSCBlockProcessed();
+		if (block > lastBlockProcessed) {
+			this.redis.set("bsc:blocks:latest", block.toString());
+		}
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any

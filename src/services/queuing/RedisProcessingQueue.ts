@@ -1,6 +1,5 @@
 import { Queue, Processor, QueueScheduler, Job, QueueEvents } from "bullmq";
 import { Logger } from "tslog";
-import cron from "node-cron";
 import { ethers, BigNumber } from "ethers";
 import { Operation, OperationsNames } from "../../models/operations/Operation";
 import BananoUserDeposit from "../../models/operations/BananoUserDeposit";
@@ -60,22 +59,6 @@ class RedisProcessingQueue implements ProcessingQueue {
 			connection: {
 				host: config.RedisHost,
 			},
-		});
-		cron.schedule("* * * * *", async () => {
-			const {
-				wait,
-				active,
-				delayed,
-				failed,
-			} = await this.processingQueue.getJobCounts(
-				"wait",
-				"active",
-				"delayed",
-				"failed"
-			);
-			this.log.debug(
-				`Queue stats: active=${active}, waiting=${wait}, delayed=${delayed}, failed=${failed}`
-			);
 		});
 	}
 
@@ -160,11 +143,17 @@ class RedisProcessingQueue implements ProcessingQueue {
 	}
 
 	async addSwapToBan(swap: SwapWBANToBan): Promise<any> {
-		this.processingQueue.add(OperationsNames.SwapToBAN, swap, {
-			jobId: `${OperationsNames.SwapToBAN}-${swap.bscWallet}-${swap.timestamp}`,
-			timestamp: swap.timestamp,
-		});
-		this.log.debug(`Added swap wBAN -> BAN to queue: ${JSON.stringify(swap)}`);
+		const job = await this.processingQueue.add(
+			OperationsNames.SwapToBAN,
+			swap,
+			{
+				jobId: `${OperationsNames.SwapToBAN}-${swap.bscWallet}-${swap.timestamp}`,
+				timestamp: swap.timestamp,
+			}
+		);
+		this.log.debug(
+			`Added swap wBAN -> BAN to queue: '${job.id}' -- ${JSON.stringify(swap)}`
+		);
 	}
 
 	async getPendingWithdrawalsAmount(): Promise<BigNumber> {
