@@ -23,13 +23,13 @@ class RedisBSCScanQueue implements BSCScanQueue {
 				host: config.RedisHost,
 			},
 			defaultJobOptions: {
-				timeout: 10_000,
+				timeout: 20_000,
 				attempts: 3,
 				backoff: {
 					type: "exponential",
 					delay: 1_000,
 				},
-				removeOnComplete: 100_000,
+				removeOnComplete: 30_000,
 				removeOnFail: false,
 			},
 		});
@@ -53,7 +53,7 @@ class RedisBSCScanQueue implements BSCScanQueue {
 				"bsc-scan",
 				{
 					blockFrom: latestBlockProcessed + 1,
-					blockTo: currentBlock,
+					blockTo: Math.min(latestBlockProcessed + 1000, currentBlock),
 				},
 				{
 					jobId: `${latestBlockProcessed + 1}-${currentBlock}`,

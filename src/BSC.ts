@@ -117,18 +117,46 @@ class BSC {
 		};
 	}
 
-	private async processBlocks(
+	async processBlocks(blockFrom: number, blockTo: number): Promise<string> {
+		const BLOCK_SLICE = 1_000;
+		try {
+			this.log.info(`Processing blocks from ${blockFrom} to ${blockTo}...`);
+
+			const numberOfSlices: number =
+				Math.floor((blockTo - blockFrom) / BLOCK_SLICE) + 1;
+			this.log.trace(`# of slices: ${numberOfSlices}`);
+			let blockSliceFrom: number = blockFrom;
+			let blockSliceTo: number = Math.min(
+				blockSliceFrom + BLOCK_SLICE - 1,
+				blockTo
+			);
+
+			for (let slice = 0; slice < numberOfSlices; slice += 1) {
+				this.log.trace(`Processing slice ${blockSliceFrom} -> ${blockSliceTo}`);
+				// eslint-disable-next-line no-await-in-loop
+				await this.processBlocksSlice(blockSliceFrom, blockSliceTo);
+				blockSliceFrom += blockSliceTo - blockSliceFrom + 1;
+				blockSliceTo += Math.min(BLOCK_SLICE, blockTo - blockSliceFrom + 1);
+			}
+
+			return `Processed blocks from ${blockFrom} to ${blockTo}...`;
+		} catch (err) {
+			this.log.error(`Couldn't process BSC blocks`, err);
+			throw err;
+		}
+	}
+
+	async processBlocksSlice(
 		blockFrom: number,
 		blockTo: number
 	): Promise<string> {
 		try {
-			this.log.info(`Processing blocks from ${blockFrom} to ${blockTo}...`);
-			const logs: ethers.Event[] = await this.wBAN.queryFilter(
+			const logs = await this.wBAN.queryFilter(
 				this.wBAN.filters.SwapToBan(null, null, null),
 				blockFrom,
 				blockTo
 			);
-			const events: SwapWBANToBan[] = await Promise.all(
+			const events = await Promise.all(
 				logs.map(async (log) => {
 					const parsedLog = this.wBAN.interface.parseLog(log);
 					const block = await this.provider.getBlock(log.blockNumber);
@@ -150,9 +178,12 @@ class BSC {
 				events.map((event) => this.handleSwapToBanEvents(event))
 			);
 			this.usersDepositsService.setLastBSCBlockProcessed(blockTo);
-			return `Processed blocks from ${blockFrom} to ${blockTo}...`;
+			return `Processed blocks slice from ${blockFrom} to ${blockTo}...`;
 		} catch (err) {
-			this.log.error(`Couldn't process BSC blocks`, err);
+			this.log.error(
+				`Couldn't process BSC blocks slice ${blockFrom} to ${blockTo}`,
+				err
+			);
 			throw err;
 		}
 	}
