@@ -18,6 +18,7 @@ import RedisProcessingQueue from "./services/queuing/RedisProcessingQueue";
 import BSCScanQueue from "./services/queuing/BSCScanQueue";
 import RedisBSCScanQueue from "./services/queuing/RedisBSCScanQueue";
 import History from "./models/responses/History";
+import { CoinExPricer } from "./prices/CoinExPricer";
 
 const app: Application = express();
 // const sse: SSE = new SSE();
@@ -140,6 +141,21 @@ app.get("/history/:bsc/:ban", async (req: Request, res: Response) => {
 	const banWallet = req.params.ban;
 	const history: History = await svc.getHistory(bscWallet, banWallet);
 	res.send(history);
+});
+
+app.get("/prices", async (req: Request, res: Response) => {
+	const [banPrice, bnbPrice, ethPrice, maticPrice] = await Promise.all([
+		new CoinExPricer("BANUSDT").getPriceInUSD(),
+		new CoinExPricer("BNBUSDC").getPriceInUSD(),
+		new CoinExPricer("ETHUSDC").getPriceInUSD(),
+		new CoinExPricer("MATICUSDC").getPriceInUSD(),
+	]);
+	res.send({
+		ban: banPrice,
+		bnb: bnbPrice,
+		eth: ethPrice,
+		matic: maticPrice,
+	});
 });
 
 /*

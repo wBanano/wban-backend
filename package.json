@@ -1,6 +1,6 @@
 {
 	"name": "wban-backend",
-	"version": "0.7.1",
+	"version": "1.1.0",
 	"description": "wBAN backend for swaps",
 	"main": "dist/app.js",
 	"scripts": {
@@ -45,6 +45,7 @@
 	"dependencies": {
 		"@bananocoin/bananojs": "^2.4.7",
 		"async-mutex": "^0.3.1",
+		"axios": "^0.21.1",
 		"bullmq": "^1.24.0",
 		"cors": "^2.8.5",
 		"dotenv": "^8.2.0",
