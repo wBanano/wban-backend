@@ -8,35 +8,35 @@ import InvalidSignatureError from "../errors/InvalidSignatureError";
 import InvalidOwner from "../errors/InvalidOwner";
 import InsufficientBalanceError from "../errors/InsufficientBalanceError";
 import { ClaimResponse } from "../models/responses/ClaimResponse";
-import { BSC } from "../BSC";
+import { Blockchain } from "../Blockchain";
 import ProcessingQueue from "./queuing/ProcessingQueue";
 import { OperationsNames } from "../models/operations/Operation";
 import BananoUserWithdrawal from "../models/operations/BananoUserWithdrawal";
 import SwapBanToWBAN from "../models/operations/SwapBanToWBAN";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
-import BSCScanQueue from "./queuing/BSCScanQueue";
 import History from "../models/responses/History";
+import BlockchainScanQueue from "./queuing/BlockchainScanQueue";
 
 class Service {
 	banano: Banano;
 
-	public bsc: BSC;
+	public blockchain: Blockchain;
 
 	private usersDepositsService: UsersDepositsService;
 
 	private processingQueue: ProcessingQueue;
 
-	private bscScanQueue: BSCScanQueue;
+	private blockchainScanQueue: BlockchainScanQueue;
 
 	private log: Logger = config.Logger.getChildLogger();
 
 	constructor(
 		usersDepositsService: UsersDepositsService,
 		processingQueue: ProcessingQueue,
-		bscScanQueue: BSCScanQueue
+		blockchainScanQueue: BlockchainScanQueue
 	) {
 		this.processingQueue = processingQueue;
-		this.bscScanQueue = bscScanQueue;
+		this.blockchainScanQueue = blockchainScanQueue;
 		this.banano = new Banano(
 			config.BananoUsersDepositsHotWallet,
 			config.BananoUsersDepositsColdWallet,
@@ -63,7 +63,7 @@ class Service {
 				);
 				return {
 					banWallet: swap.from,
-					bscWallet: swap.bscWallet,
+					blockchainWallet: swap.blockchainWallet,
 					swapped: swap.amount,
 					receipt,
 					uuid,
@@ -89,18 +89,21 @@ class Service {
 					),
 					wbanBalance,
 					transaction: hash,
-					transactionLink: `${config.BinanceSmartChainBlockExplorerUrl}/tx/${hash}`,
+					transactionLink: `${config.BlockchainBlockExplorerUrl}/tx/${hash}`,
 				};
 			}
 		);
-		this.bsc = new BSC(usersDepositsService, this.bscScanQueue);
-		this.bsc.onSwapToBAN((swap: SwapWBANToBan) => this.swapToBAN(swap));
+		this.blockchain = new Blockchain(
+			usersDepositsService,
+			this.blockchainScanQueue
+		);
+		this.blockchain.onSwapToBAN((swap: SwapWBANToBan) => this.swapToBAN(swap));
 		this.usersDepositsService = usersDepositsService;
 	}
 
 	start(): void {
 		this.processingQueue.start();
-		this.bscScanQueue.start();
+		this.blockchainScanQueue.start();
 		this.banano.subscribeToBananoNotificationsForWallet();
 	}
 
@@ -110,13 +113,13 @@ class Service {
 
 	async claim(
 		banWallet: string,
-		bscWallet: string,
+		blockchainWallet: string,
 		signature: string
 	): Promise<ClaimResponse> {
 		// verify signature
 		if (
 			!this.checkSignature(
-				bscWallet,
+				blockchainWallet,
 				signature,
 				`I hereby claim that the BAN address "${banWallet}" is mine`
 			)
@@ -124,14 +127,14 @@ class Service {
 			return ClaimResponse.InvalidSignature;
 		}
 		// check if the user already did the claim process
-		if (await this.usersDepositsService.hasClaim(banWallet, bscWallet)) {
+		if (await this.usersDepositsService.hasClaim(banWallet, blockchainWallet)) {
 			return ClaimResponse.AlreadyDone;
 		}
 		// check if there is a pending claim
 		if (!(await this.usersDepositsService.hasPendingClaim(banWallet))) {
 			return (await this.usersDepositsService.storePendingClaim(
 				banWallet,
-				bscWallet
+				blockchainWallet
 			))
 				? ClaimResponse.Ok
 				: ClaimResponse.Error;
@@ -143,14 +146,14 @@ class Service {
 	async withdrawBAN(
 		banWallet: string,
 		amount: string,
-		bscWallet: string,
+		blockchainWallet: string,
 		timestamp: number,
 		signature: string
 	): Promise<string> {
 		return this.processingQueue.addBananoUserWithdrawal({
 			banWallet,
 			amount,
-			bscWallet,
+			blockchainWallet,
 			signature,
 			timestamp,
 			attempt: 0,
@@ -161,7 +164,7 @@ class Service {
 		withdrawal: BananoUserWithdrawal,
 		signature?: string
 	): Promise<string> {
-		const { banWallet, amount, bscWallet, timestamp } = withdrawal;
+		const { banWallet, amount, blockchainWallet, timestamp } = withdrawal;
 
 		this.log.info(
 			`Processing user withdrawal request of "${amount}" BAN from wallet "${banWallet}"`
@@ -183,7 +186,7 @@ class Service {
 		if (
 			signature &&
 			!this.checkSignature(
-				bscWallet,
+				blockchainWallet,
 				signature,
 				`Withdraw ${amount} BAN to my wallet "${banWallet}"`
 			)
@@ -194,8 +197,10 @@ class Service {
 		// verify is the claim was previously done
 		if (!this.usersDepositsService.isClaimed(banWallet)) {
 			throw new Error(`Can't withdraw from unclaimed wallet ${banWallet}`);
-		} else if (!this.usersDepositsService.hasClaim(banWallet, bscWallet)) {
-			throw new Error("Can't withdraw from another BSC wallet");
+		} else if (
+			!this.usersDepositsService.hasClaim(banWallet, blockchainWallet)
+		) {
+			throw new Error("Can't withdraw from another Blockchain wallet");
 		}
 
 		const withdrawnAmount: BigNumber = ethers.utils.parseEther(amount);
@@ -238,26 +243,26 @@ class Service {
 	async swapToWBAN(
 		from: string,
 		amount: number,
-		bscWallet: string,
+		blockchainWallet: string,
 		timestamp: number,
 		signature: string
 	): Promise<string> {
 		return this.processingQueue.addSwapToWBan({
 			from,
 			amount,
-			bscWallet,
+			blockchainWallet,
 			signature,
 			timestamp,
 		});
 	}
 
 	async processSwapToWBAN(swap: SwapBanToWBAN): Promise<any> {
-		const { from, bscWallet, signature } = swap;
+		const { from, blockchainWallet, signature } = swap;
 		const amountStr = swap.amount;
 		// verify signature
 		if (
 			!this.checkSignature(
-				bscWallet,
+				blockchainWallet,
 				signature,
 				`Swap ${amountStr} BAN for wBAN with BAN I deposited from my wallet "${from}"`
 			)
@@ -265,7 +270,7 @@ class Service {
 			throw new InvalidSignatureError();
 		}
 		// verify if there is a proper claim
-		if (!(await this.usersDepositsService.hasClaim(from, bscWallet))) {
+		if (!(await this.usersDepositsService.hasClaim(from, blockchainWallet))) {
 			throw new InvalidOwner();
 		}
 
@@ -289,10 +294,11 @@ class Service {
 		}
 
 		// create wBAN swap receipt
-		const { receipt, uuid, wbanBalance } = await this.bsc.createMintReceipt(
-			bscWallet,
-			amount
-		);
+		const {
+			receipt,
+			uuid,
+			wbanBalance,
+		} = await this.blockchain.createMintReceipt(blockchainWallet, amount);
 		// decrease user deposits
 		// TODO: store signature?
 		await this.usersDepositsService.storeUserSwapToWBan(
@@ -329,14 +335,17 @@ class Service {
 		};
 	}
 
-	async getHistory(bscWallet: string, banWallet: string): Promise<History> {
+	async getHistory(
+		blockchainWallet: string,
+		banWallet: string
+	): Promise<History> {
 		const history = new History();
 		history.deposits = await this.usersDepositsService.getDeposits(banWallet);
 		history.withdrawals = await this.usersDepositsService.getWithdrawals(
 			banWallet
 		);
 		history.swaps = await this.usersDepositsService.getSwaps(
-			bscWallet,
+			blockchainWallet,
 			banWallet
 		);
 		return history;
@@ -347,13 +356,13 @@ class Service {
 	}
 
 	checkSignature(
-		bscWallet: string,
+		blockchainWallet: string,
 		signature: string,
 		expected: string
 	): boolean {
 		this.log.trace(`Checking signature '${signature}'`);
 		const author = ethers.utils.verifyMessage(expected, signature);
-		const sanitizedAddress = ethers.utils.getAddress(bscWallet);
+		const sanitizedAddress = ethers.utils.getAddress(blockchainWallet);
 		if (author !== sanitizedAddress) {
 			this.log.warn(
 				`Signature is invalid. ${sanitizedAddress} sent a signed message pretending to be from ${author}`

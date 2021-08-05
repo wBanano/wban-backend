@@ -15,8 +15,8 @@ import { ClaimResponse } from "./models/responses/ClaimResponse";
 import ProcessingQueue from "./services/queuing/ProcessingQueue";
 import JobListener from "./services/queuing/JobListener";
 import RedisProcessingQueue from "./services/queuing/RedisProcessingQueue";
-import BSCScanQueue from "./services/queuing/BSCScanQueue";
-import RedisBSCScanQueue from "./services/queuing/RedisBSCScanQueue";
+import BlockchainScanQueue from "./services/queuing/BlockchainScanQueue";
+import RedisBlockchainScanQueue from "./services/queuing/RedisBlockchainScanQueue";
 import History from "./models/responses/History";
 import { CoinExPricer } from "./prices/CoinExPricer";
 
@@ -34,12 +34,18 @@ const usersDepositsService: UsersDepositsService = new UsersDepositsService(
 	usersDepositsStorage
 );
 const processingQueue: ProcessingQueue = new RedisProcessingQueue();
-const bscScanQueue: BSCScanQueue = new RedisBSCScanQueue(usersDepositsService);
-const svc = new Service(usersDepositsService, processingQueue, bscScanQueue);
+const blockchainScanQueue: BlockchainScanQueue = new RedisBlockchainScanQueue(
+	usersDepositsService
+);
+const svc = new Service(
+	usersDepositsService,
+	processingQueue,
+	blockchainScanQueue
+);
 svc.start();
 
 app.get("/health", (req: Request, res: Response) => {
-	// TODO: check if connections to Banano node, BSC node and Redis node are okay!
+	// TODO: check if connections to Banano node, Blockchain node and Redis node are okay!
 	res.send({
 		status: "OK",
 	});
@@ -64,7 +70,7 @@ app.post("/withdrawals/ban", async (req: Request, res: Response) => {
 	const withdrawalRequest: WithdrawalRequest = req.body as WithdrawalRequest;
 	const banAmount: number = withdrawalRequest.amount;
 	const banWallet: string = withdrawalRequest.ban;
-	const bscWallet: string = withdrawalRequest.bsc;
+	const blockchainWallet: string = withdrawalRequest.blockchain;
 	const signature: string = withdrawalRequest.sig;
 
 	log.info(`Withdrawing ${banAmount} BAN to ${banWallet}`);
@@ -72,7 +78,7 @@ app.post("/withdrawals/ban", async (req: Request, res: Response) => {
 	await svc.withdrawBAN(
 		banWallet,
 		banAmount.toString(),
-		bscWallet,
+		blockchainWallet,
 		Date.now(),
 		signature
 	);
@@ -89,11 +95,15 @@ app.get("/withdrawals/pending", async (req: Request, res: Response) => {
 app.post("/claim", async (req: Request, res: Response) => {
 	// TODO: make sure all required parameters are sent!
 	const claimRequest: ClaimRequest = req.body as ClaimRequest;
-	const { banAddress, bscAddress, sig } = claimRequest;
+	const { banAddress, blockchainAddress, sig } = claimRequest;
 	log.info(
-		`Check claim for ${banAddress} and ${bscAddress} with signature ${sig}`
+		`Check claim for ${banAddress} and ${blockchainAddress} with signature ${sig}`
 	);
-	const result: ClaimResponse = await svc.claim(banAddress, bscAddress, sig);
+	const result: ClaimResponse = await svc.claim(
+		banAddress,
+		blockchainAddress,
+		sig
+	);
 	switch (result) {
 		case ClaimResponse.Ok:
 			res.send({
@@ -108,7 +118,7 @@ app.post("/claim", async (req: Request, res: Response) => {
 		case ClaimResponse.InvalidOwner:
 			res.status(409).send({
 				message:
-					"This BAN wallet was already claimed by another Binance Smart Chain Address.",
+					"This BAN wallet was already claimed by another Blockchain Address.",
 			});
 			break;
 		case ClaimResponse.InvalidSignature:
@@ -125,21 +135,27 @@ app.post("/swap", async (req: Request, res: Response) => {
 	const swapRequest: SwapRequest = req.body as SwapRequest;
 	const banAmount: number = swapRequest.amount;
 	const banWallet: string = swapRequest.ban;
-	const bscWallet: string = swapRequest.bsc;
+	const blockchainWallet: string = swapRequest.blockchain;
 	const signature: string = swapRequest.sig;
 
 	log.debug(
-		`banAmount=${banAmount}, banWallet=${banWallet}, bscWallet=${bscWallet}, signature=${signature}`
+		`banAmount=${banAmount}, banWallet=${banWallet}, blockchainWallet=${blockchainWallet}, signature=${signature}`
 	);
 
-	await svc.swapToWBAN(banWallet, banAmount, bscWallet, Date.now(), signature);
+	await svc.swapToWBAN(
+		banWallet,
+		banAmount,
+		blockchainWallet,
+		Date.now(),
+		signature
+	);
 	res.status(201).send();
 });
 
-app.get("/history/:bsc/:ban", async (req: Request, res: Response) => {
-	const bscWallet = req.params.bsc;
+app.get("/history/:blockchain/:ban", async (req: Request, res: Response) => {
+	const blockchainWallet = req.params.blockchain;
 	const banWallet = req.params.ban;
-	const history: History = await svc.getHistory(bscWallet, banWallet);
+	const history: History = await svc.getHistory(blockchainWallet, banWallet);
 	res.send(history);
 });
 

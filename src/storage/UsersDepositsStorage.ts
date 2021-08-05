@@ -10,9 +10,12 @@ interface UsersDepositsStorage {
 	*/
 
 	hasPendingClaim(banAddress: string): Promise<boolean>;
-	storePendingClaim(banAddress: string, bscAddress: string): Promise<boolean>;
+	storePendingClaim(
+		banAddress: string,
+		blockchainAddress: string
+	): Promise<boolean>;
 	isClaimed(banAddress: string): Promise<boolean>;
-	hasClaim(banAddress: string, bscAddress: string): Promise<boolean>;
+	hasClaim(banAddress: string, blockchainAddress: string): Promise<boolean>;
 	confirmClaim(banAddress: string): Promise<boolean>;
 
 	storeUserDeposit(
@@ -46,15 +49,15 @@ interface UsersDepositsStorage {
 	storeUserSwapToBan(swap: SwapWBANToBan): Promise<void>;
 	swapToBanWasAlreadyDone(swap: SwapWBANToBan): Promise<boolean>;
 
-	getLastBSCBlockProcessed(): Promise<number>;
-	setLastBSCBlockProcessed(block: number): Promise<void>;
+	getLastBlockchainBlockProcessed(): Promise<number>;
+	setLastBlockchainBlockProcessed(block: number): Promise<void>;
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	getDeposits(banAddress: string): Promise<Array<any>>;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	getWithdrawals(banAddress: string): Promise<Array<any>>;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	getSwaps(bscAddress: string, banAddress: string): Promise<Array<any>>;
+	getSwaps(blockchainAddress: string, banAddress: string): Promise<Array<any>>;
 }
 
 export { UsersDepositsStorage };

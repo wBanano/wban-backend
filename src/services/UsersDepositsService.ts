@@ -27,20 +27,26 @@ class UsersDepositsService {
 
 	async storePendingClaim(
 		banAddress: string,
-		bscAddress: string
+		blockchainAddress: string
 	): Promise<boolean> {
 		if (await this.usersDepositsStorage.hasPendingClaim(banAddress)) {
 			return false;
 		}
-		return this.usersDepositsStorage.storePendingClaim(banAddress, bscAddress);
+		return this.usersDepositsStorage.storePendingClaim(
+			banAddress,
+			blockchainAddress
+		);
 	}
 
 	async isClaimed(banAddress: string): Promise<boolean> {
 		return this.usersDepositsStorage.isClaimed(banAddress);
 	}
 
-	async hasClaim(banAddress: string, bscAddress: string): Promise<boolean> {
-		return this.usersDepositsStorage.hasClaim(banAddress, bscAddress);
+	async hasClaim(
+		banAddress: string,
+		blockchainAddress: string
+	): Promise<boolean> {
+		return this.usersDepositsStorage.hasClaim(banAddress, blockchainAddress);
 	}
 
 	async confirmClaim(banAddress: string): Promise<boolean> {
@@ -126,12 +132,12 @@ class UsersDepositsService {
 		);
 	}
 
-	async getLastBSCBlockProcessed(): Promise<number> {
-		return this.usersDepositsStorage.getLastBSCBlockProcessed();
+	async getLastBlockchainBlockProcessed(): Promise<number> {
+		return this.usersDepositsStorage.getLastBlockchainBlockProcessed();
 	}
 
-	async setLastBSCBlockProcessed(block: number): Promise<void> {
-		return this.usersDepositsStorage.setLastBSCBlockProcessed(block);
+	async setLastBlockchainBlockProcessed(block: number): Promise<void> {
+		return this.usersDepositsStorage.setLastBlockchainBlockProcessed(block);
 	}
 
 	async storeUserSwapToBan(event: SwapWBANToBan): Promise<void> {
@@ -153,8 +159,8 @@ class UsersDepositsService {
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	getSwaps(bscWallet: string, banWallet: string): Promise<Array<any>> {
-		return this.usersDepositsStorage.getSwaps(bscWallet, banWallet);
+	getSwaps(blockchainAddress: string, banWallet: string): Promise<Array<any>> {
+		return this.usersDepositsStorage.getSwaps(blockchainAddress, banWallet);
 	}
 }
 

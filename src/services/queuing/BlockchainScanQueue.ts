@@ -1,8 +1,8 @@
 import { Processor } from "bullmq";
 
-interface BSCScanQueue {
+interface BlockchainScanQueue {
 	start(): void;
 	registerProcessor(jobName: string, processor: Processor): void;
 }
 
-export default BSCScanQueue;
+export default BlockchainScanQueue;

@@ -1,14 +1,14 @@
 import { Queue, Processor, QueueScheduler, Job } from "bullmq";
 import { Logger } from "tslog";
 import { ethers } from "ethers";
-import BSCScanQueue from "./BSCScanQueue";
+import BlockchainScanQueue from "./BlockchainScanQueue";
 import ProcessingQueueWorker from "./ProcessingQueueWorker";
 import config from "../../config";
 import { UsersDepositsService } from "../UsersDepositsService";
 
-const QUEUE_NAME = "bsc-scan";
+const QUEUE_NAME = "bc-scan";
 
-class RedisBSCScanQueue implements BSCScanQueue {
+class RedisBlockchainScanQueue implements BlockchainScanQueue {
 	private queue: Queue<any, any, string>;
 
 	private worker: ProcessingQueueWorker;
@@ -40,17 +40,17 @@ class RedisBSCScanQueue implements BSCScanQueue {
 		});
 		this.worker = new ProcessingQueueWorker(QUEUE_NAME);
 		const provider = new ethers.providers.JsonRpcProvider(
-			config.BinanceSmartChainJsonRpc,
+			config.BlockchainJsonRpc,
 			{
-				name: config.BinanceSmartChainNetworkName,
-				chainId: config.BinanceSmartChainNetworkChainId,
+				name: config.BlockchainNetworkName,
+				chainId: config.BlockchainNetworkChainId,
 			}
 		);
-		this.worker.registerProcessorForJobNamed("bsc-scan-repeat", async () => {
-			const latestBlockProcessed: number = await usersDepositsService.getLastBSCBlockProcessed();
+		this.worker.registerProcessorForJobNamed("bc-scan-repeat", async () => {
+			const latestBlockProcessed: number = await usersDepositsService.getLastBlockchainBlockProcessed();
 			const currentBlock: number = await provider.getBlockNumber();
 			this.queue.add(
-				"bsc-scan",
+				"bc-scan",
 				{
 					blockFrom: latestBlockProcessed + 1,
 					blockTo: Math.min(latestBlockProcessed + 1000, currentBlock),
@@ -64,7 +64,7 @@ class RedisBSCScanQueue implements BSCScanQueue {
 	}
 
 	start(): void {
-		this.schedulePeriodicJob("bsc-scan-repeat", 30_000);
+		this.schedulePeriodicJob("bc-scan-repeat", 30_000);
 		this.queue.resume();
 	}
 
@@ -91,4 +91,4 @@ class RedisBSCScanQueue implements BSCScanQueue {
 	}
 }
 
-export default RedisBSCScanQueue;
+export default RedisBlockchainScanQueue;

@@ -2,7 +2,7 @@ import chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 import * as sinon from "ts-sinon";
 import sinonChai from "sinon-chai";
-import { BSC } from "../src/BSC";
+import { Blockchain } from "../src/Blockchain";
 import { UsersDepositsService } from "../src/services/UsersDepositsService";
 import ProcessingQueue from "../src/services/queuing/ProcessingQueue";
 
@@ -11,17 +11,20 @@ const { expect } = chai;
 chai.use(sinonChai);
 chai.use(chaiAsPromised);
 
-describe("BSC Service", () => {
-	let svc: sinon.StubbedInstance<BSC> = null;
+describe("Blockchain Service", () => {
+	let svc: sinon.StubbedInstance<Blockchain> = null;
 
 	beforeEach(async () => {
 		const usersDepositsService = sinon.stubInterface<UsersDepositsService>();
-		const bscScanQueue = sinon.stubInterface<ProcessingQueue>();
-		const bsc = new BSC(usersDepositsService, bscScanQueue);
-		svc = sinon.stubObject<BSC>(bsc, ["processBlocksSlice"]);
+		const blockchainScanQueue = sinon.stubInterface<ProcessingQueue>();
+		const blockchain = new Blockchain(
+			usersDepositsService,
+			blockchainScanQueue
+		);
+		svc = sinon.stubObject<Blockchain>(blockchain, ["processBlocksSlice"]);
 	});
 
-	describe("BSC block ranges in chunks", async () => {
+	describe("Blockchain block ranges in chunks", async () => {
 		it("Single slice for small range", async () => {
 			await svc.processBlocks(1535, 1538);
 			expect(svc.processBlocksSlice).to.be.calledOnce;

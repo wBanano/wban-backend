@@ -12,10 +12,10 @@ import config from "../config";
  * - `deposits:${ban_address}`: sorted set (by timestamp) of all BAN deposits transactions hash
  * - `withdrawals:${ban_address}`: sorted set (by timestamp) of all BAN withdrawals TODO: date vs hash issue
  * - `swaps:ban-to-wban:${ban_address}`: sorted set (by timestamp) of all BAN -> wBAN receipts generated
- * - `swaps:wban-to-ban:${bsc_address}`: sorted set (by timestamp) of all wBAN -> BAN transactions hash
+ * - `swaps:wban-to-ban:${blockchain_address}`: sorted set (by timestamp) of all wBAN -> BAN transactions hash
  * - `audit:${hash|receipt}`: map of all the data associated to the event (deposit/withdrawal/swap)
- * - `claims:pending:${ban_address}:${bsc_address}`: value of 1 means a pending claim -- expires after 5 minutes (TTL)
- * - `claims:${ban_address}:${bsc_address}`: value of 1 means a valid claim
+ * - `claims:pending:${ban_address}:${blockchain_address}`: value of 1 means a pending claim -- expires after 5 minutes (TTL)
+ * - `claims:${ban_address}:${blockchain_address}`: value of 1 means a valid claim
  */
 class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	private redis: IORedis.Redis;
@@ -89,10 +89,10 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 
 	async storePendingClaim(
 		banAddress: string,
-		bscAddress: string
+		blockchainAddress: string
 	): Promise<boolean> {
 		try {
-			const key = `claims:pending:${banAddress.toLowerCase()}:${bscAddress.toLowerCase()}`;
+			const key = `claims:pending:${banAddress.toLowerCase()}:${blockchainAddress.toLowerCase()}`;
 			await this.redis
 				.multi()
 				.set(key, "1")
@@ -101,7 +101,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			this.log.info(
 				`Stored pending claim for ${
 					banAddress.toLowerCase
-				} and ${bscAddress.toLowerCase()}`
+				} and ${blockchainAddress.toLowerCase()}`
 			);
 			return true;
 		} catch (err) {
@@ -121,9 +121,12 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		return exists;
 	}
 
-	async hasClaim(banAddress: string, bscAddress: string): Promise<boolean> {
+	async hasClaim(
+		banAddress: string,
+		blockchainAddress: string
+	): Promise<boolean> {
 		const pendingClaims = await this.redis.keys(
-			`claims:${banAddress.toLowerCase()}:${bscAddress.toLowerCase()}`
+			`claims:${banAddress.toLowerCase()}:${blockchainAddress.toLowerCase()}`
 		);
 		const exists = pendingClaims.length > 0;
 		this.log.trace(
@@ -240,7 +243,9 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 						})
 						.exec();
 					this.log.info(
-						`Stored user withdrawal from: ${banAddress}, amount: ${amount} BAN`
+						`Stored user withdrawal from: ${banAddress}, amount: ${ethers.utils.formatEther(
+							amount
+						)} BAN`
 					);
 				} catch (err) {
 					this.log.error(err);
@@ -304,7 +309,9 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 						})
 						.exec();
 					this.log.info(
-						`Stored user swap from: ${banAddress}, amount: ${amount} BAN, receipt: ${receipt}`
+						`Stored user swap from: ${banAddress}, amount: ${ethers.utils.formatEther(
+							amount
+						)} BAN, receipt: ${receipt}`
 					);
 				} catch (err) {
 					this.log.error(err);
@@ -345,7 +352,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 							balance.toString()
 						)
 						.zadd(
-							`swaps:wban-to-ban:${swap.bscWallet.toLowerCase()}`,
+							`swaps:wban-to-ban:${swap.blockchainWallet.toLowerCase()}`,
 							swap.timestamp * 1_000,
 							swap.hash
 						)
@@ -359,7 +366,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 					this.log.info(
 						`Stored user swap from wBAN of ${
 							swap.amount
-						} BAN from ${swap.bscWallet.toLowerCase()} to ${swap.banWallet.toLowerCase()} with hash: ${
+						} BAN from ${swap.blockchainWallet.toLowerCase()} to ${swap.banWallet.toLowerCase()} with hash: ${
 							swap.hash
 						}`
 					);
@@ -376,29 +383,29 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 
 	async swapToBanWasAlreadyDone(swap: SwapWBANToBan): Promise<boolean> {
 		this.log.info(
-			`Checking if swap from ${swap.bscWallet.toLowerCase()} with hash ${
+			`Checking if swap from ${swap.blockchainWallet.toLowerCase()} with hash ${
 				swap.hash
 			} was already processed...`
 		);
 		const isAlreadyProcessed = await this.redis.zrank(
-			`swaps:wban-to-ban:${swap.bscWallet.toLowerCase()}`,
+			`swaps:wban-to-ban:${swap.blockchainWallet.toLowerCase()}`,
 			swap.hash
 		);
 		return isAlreadyProcessed > 0;
 	}
 
-	async getLastBSCBlockProcessed(): Promise<number> {
-		const rawBlockValue = await this.redis.get("bsc:blocks:latest");
+	async getLastBlockchainBlockProcessed(): Promise<number> {
+		const rawBlockValue = await this.redis.get("blockchain:blocks:latest");
 		if (rawBlockValue === null) {
-			return config.BinanceSmartChainWalletPendingTransactionsStartFromBlock;
+			return config.BlockchainWalletPendingTransactionsStartFromBlock;
 		}
 		return Number.parseInt(rawBlockValue, 10);
 	}
 
-	async setLastBSCBlockProcessed(block: number): Promise<void> {
-		const lastBlockProcessed = await this.getLastBSCBlockProcessed();
+	async setLastBlockchainBlockProcessed(block: number): Promise<void> {
+		const lastBlockProcessed = await this.getLastBlockchainBlockProcessed();
 		if (block > lastBlockProcessed) {
-			this.redis.set("bsc:blocks:latest", block.toString());
+			this.redis.set("blockchain:blocks:latest", block.toString());
 		}
 	}
 
@@ -441,7 +448,10 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	async getSwaps(bscAddress: string, banAddress: string): Promise<Array<any>> {
+	async getSwaps(
+		blockchainAddress: string,
+		banAddress: string
+	): Promise<Array<any>> {
 		const banToWBAN: string[] = await this.redis.zrevrangebyscore(
 			`swaps:ban-to-wban:${banAddress.toLowerCase()}`,
 			"+inf",
@@ -451,7 +461,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			RedisUsersDepositsStorage.LIMIT
 		);
 		const wbanToBAN: string[] = await this.redis.zrevrangebyscore(
-			`swaps:wban-to-ban:${bscAddress.toLowerCase()}`,
+			`swaps:wban-to-ban:${blockchainAddress.toLowerCase()}`,
 			"+inf",
 			"-inf",
 			"LIMIT",
@@ -462,7 +472,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			banToWBAN.concat(wbanToBAN).map(async (hash) => {
 				const results = await this.redis.hgetall(`audit:${hash}`);
 				if (results.type === "swap-to-ban") {
-					results.link = `${config.BinanceSmartChainBlockExplorerUrl}/tx/${hash}`;
+					results.link = `${config.BlockchainBlockExplorerUrl}/tx/${hash}`;
 				}
 				return results;
 			})

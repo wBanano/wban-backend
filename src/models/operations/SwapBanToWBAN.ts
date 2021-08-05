@@ -1,7 +1,7 @@
 declare type SwapBanToWBAN = {
 	from: string;
 	amount: number;
-	bscWallet: string;
+	blockchainWallet: string;
 	signature: string;
 	timestamp: number;
 };

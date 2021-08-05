@@ -40,16 +40,16 @@ export default {
 	BananoUsersDepositsHotWalletToColdWalletRatio:
 		process.env.BANANO_USERS_DEPOSITS_HOT_WALLET_TO_COLD_WALLET_RATIO ?? "0.2",
 
-	BinanceSmartChainJsonRpc: process.env.BSC_JSON_RPC_URL ?? "",
-	BinanceSmartChainBlockExplorerUrl: process.env.BSC_BLOCK_EXPLORER_URL ?? "",
-	BinanceSmartChainNetworkName: process.env.BSC_NETWORK_NAME ?? "",
-	BinanceSmartChainNetworkChainId:
-		Number.parseInt(process.env.BSC_NETWORK_CHAIN_ID, 10) ?? 0,
-	BinanceSmartChainWalletMnemonic: process.env.BSC_WALLET_MMENOMIC ?? "",
-	BinanceSmartChainWalletPendingTransactionsThreadEnabled:
-		process.env.BSC_PENDING_TXN_THREAD ?? true,
-	BinanceSmartChainWalletPendingTransactionsStartFromBlock:
-		Number.parseInt(process.env.BSC_PENDING_BLOCKS_START, 10) ?? 0,
+	BlockchainJsonRpc: process.env.BC_JSON_RPC_URL ?? "",
+	BlockchainBlockExplorerUrl: process.env.BC_BLOCK_EXPLORER_URL ?? "",
+	BlockchainNetworkName: process.env.BC_NETWORK_NAME ?? "",
+	BlockchainNetworkChainId:
+		Number.parseInt(process.env.BC_NETWORK_CHAIN_ID, 10) ?? 0,
+	BlockchainWalletMnemonic: process.env.BC_WALLET_MMENOMIC ?? "",
+	BlockchainWalletPendingTransactionsThreadEnabled:
+		process.env.BC_PENDING_TXN_THREAD ?? true,
+	BlockchainWalletPendingTransactionsStartFromBlock:
+		Number.parseInt(process.env.BC_PENDING_BLOCKS_START, 10) ?? 0,
 
 	WBANContractAddress: process.env.WBAN_CONTRACT_ADDRESS ?? "",
 

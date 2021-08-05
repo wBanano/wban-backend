@@ -1,6 +1,6 @@
 type ClaimRequest = {
 	banAddress: string;
-	bscAddress: string;
+	blockchainAddress: string;
 	sig: string;
 };
 

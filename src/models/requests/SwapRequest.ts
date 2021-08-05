@@ -1,7 +1,7 @@
 type SwapRequest = {
 	amount: number;
 	ban: string;
-	bsc: string;
+	blockchain: string;
 	sig: string;
 };
 

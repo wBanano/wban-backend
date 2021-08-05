@@ -147,7 +147,7 @@ class RedisProcessingQueue implements ProcessingQueue {
 			OperationsNames.SwapToBAN,
 			swap,
 			{
-				jobId: `${OperationsNames.SwapToBAN}-${swap.bscWallet}-${swap.timestamp}`,
+				jobId: `${OperationsNames.SwapToBAN}-${swap.blockchainWallet}-${swap.timestamp}`,
 				timestamp: swap.timestamp,
 			}
 		);
