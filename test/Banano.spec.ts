@@ -2,11 +2,12 @@ import chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 import * as sinon from "ts-sinon";
 import sinonChai from "sinon-chai";
-import { UsersDepositsService } from "../../src/services/UsersDepositsService";
-import { Banano } from "../../src/Banano";
+import { UsersDepositsService } from "../src/services/UsersDepositsService";
+import { Banano } from "../src/Banano";
 import { BigNumber, ethers } from "ethers";
-import ProcessingQueue from "../../src/services/queuing/ProcessingQueue";
-import config from "../../src/config";
+import ProcessingQueue from "../src/services/queuing/ProcessingQueue";
+import config from "../src/config";
+import { LockError } from "redlock";
 
 const { expect } = chai;
 
@@ -81,6 +82,33 @@ describe("Banano Service", () => {
 			expect(svc.sendBan).to.be.calledOnceWith(sender, amount);
 			// and have no deposit stored
 			expect(depositsService.storeUserDeposit).to.not.have.been.called;
+		});
+
+		it("Fails if there is a redlock error", async () => {
+			const sender = "ban_sender";
+			const amount: BigNumber = ethers.utils.parseEther("1");
+			const hash = "0xCAFEBABE";
+			const timestamp = Date.now();
+			depositsService.hasPendingClaim.withArgs(sender).resolves(true);
+			depositsService.confirmClaim.withArgs(sender).resolves(true);
+			depositsService.isClaimed.withArgs(sender).resolves(true);
+			depositsService.storeUserDeposit
+				.withArgs(sender, amount, timestamp, hash)
+				.throws(new LockError("Exceeded 10 attempts to lock the resource"));
+
+			svc.receiveTransaction.resolves();
+			svc.getTotalBalance
+				.withArgs(hotWallet)
+				.resolves(ethers.utils.parseEther("1"))
+				.withArgs(coldWallet)
+				.resolves(ethers.utils.parseEther("1"));
+
+			// make a deposit expected to fail
+			expect(
+				svc.processUserDeposit(sender, amount, timestamp, hash)
+			).to.be.rejectedWith(
+				new LockError("Exceeded 10 attempts to lock the resource")
+			);
 		});
 
 		it("Registers user deposit from a pending claimed wallet", async () => {

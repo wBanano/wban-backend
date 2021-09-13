@@ -156,7 +156,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			`Storing user deposit from: ${banAddress}, amount: ${amount} BAN, hash: ${hash}`
 		);
 		return this.redlock
-			.lock(`locks:ban-balance:${banAddress}`, 1_000)
+			.lock(`locks:ban-balance:${banAddress}`, 30_000)
 			.then(async (lock) => {
 				let rawBalance: string | null;
 				try {
@@ -176,7 +176,9 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 						.hset(`audit:${hash}`, { type: "deposit", hash, amount, timestamp })
 						.exec();
 					this.log.info(
-						`Stored user deposit from: ${banAddress}, amount: ${amount} BAN, hash: ${hash}`
+						`Stored user deposit from: ${banAddress}, amount: ${ethers.utils.formatEther(
+							amount
+						)} BAN, hash: ${hash}`
 					);
 				} catch (err) {
 					this.log.error(err);
@@ -187,7 +189,9 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			})
 			.catch((err) => {
 				this.log.error(
-					`Couldn't store user deposit from: ${banAddress}, amount: ${amount} BAN, hash: ${hash}`
+					`Couldn't store user deposit from: ${banAddress}, amount: ${ethers.utils.formatEther(
+						amount
+					)} BAN, hash: ${hash}`
 				);
 				throw err;
 			});
@@ -215,7 +219,9 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	): Promise<void> {
 		const banAddress = _banAddress.toLowerCase();
 		this.log.info(
-			`Storing user withdrawal to: ${banAddress}, amount: ${amount} BAN, hash: ${hash}`
+			`Storing user withdrawal to: ${banAddress}, amount: ${ethers.utils.formatEther(
+				amount
+			)} BAN, hash: ${hash}`
 		);
 		this.redlock
 			.lock(`locks:ban-balance:${banAddress}`, 1_000)

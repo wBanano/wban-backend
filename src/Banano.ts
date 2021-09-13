@@ -297,7 +297,7 @@ class Banano {
 				}
 			} else {
 				// record the user deposit
-				this.usersDepositsService.storeUserDeposit(
+				await this.usersDepositsService.storeUserDeposit(
 					sender,
 					amount,
 					timestamp,
