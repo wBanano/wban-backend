@@ -202,6 +202,12 @@ class Banano {
 					this.log.debug(`Transaction is: ${JSON.stringify(transaction)}`);
 					const { amount } = transaction;
 					const sender = transaction.source;
+					// if amount deposited is only made of RAW, receive them and rekt the user :)
+					if (amount.length < 11) {
+						// eslint-disable-next-line no-await-in-loop
+						await this.receiveTransaction(hash);
+						return;
+					}
 					const banAmount: BigNumber = BigNumber.from(
 						amount.substring(0, amount.length - 11)
 					);

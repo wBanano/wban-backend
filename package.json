@@ -68,8 +68,8 @@
 	},
 	"nyc": {
 		"lines": 49,
-		"functions": 26,
-		"branches": 54,
-		"statements": 49
+		"functions": 26.7,
+		"branches": 53.5,
+		"statements": 48.85
 	}
 }
