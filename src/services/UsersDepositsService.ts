@@ -117,14 +117,16 @@ class UsersDepositsService {
 	}
 
 	async storeUserSwapToWBan(
-		from: string,
+		banWallet: string,
+		blockchainWallet: string,
 		amount: BigNumber,
 		timestamp: number,
 		receipt: string,
 		uuid: string
 	): Promise<void> {
 		return this.usersDepositsStorage.storeUserSwapToWBan(
-			from,
+			banWallet,
+			blockchainWallet,
 			amount,
 			timestamp,
 			receipt,

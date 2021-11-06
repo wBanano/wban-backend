@@ -281,6 +281,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 
 	async storeUserSwapToWBan(
 		_banAddress: string,
+		_blockchainAddress: string,
 		amount: BigNumber,
 		timestamp: number,
 		receipt: string,
@@ -308,6 +309,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 						.zadd(`swaps:ban-to-wban:${banAddress}`, timestamp, receipt)
 						.hset(`audit:${receipt}`, {
 							type: "swap-to-wban",
+							blockchainAddress: _blockchainAddress.toLowerCase(),
 							receipt,
 							uuid,
 							amount,
@@ -365,6 +367,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 						.hset(`audit:${swap.hash}`, {
 							type: "swap-to-ban",
 							hash: swap.hash,
+							banAddress: swap.banWallet.toLowerCase(),
 							amount: ethers.utils.parseEther(swap.amount).toString(),
 							timestamp: swap.timestamp * 1_000,
 						})

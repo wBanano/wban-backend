@@ -303,6 +303,7 @@ class Service {
 		// TODO: store signature?
 		await this.usersDepositsService.storeUserSwapToWBan(
 			from,
+			blockchainWallet,
 			amount,
 			swap.timestamp,
 			receipt,

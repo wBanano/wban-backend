@@ -41,6 +41,7 @@ interface UsersDepositsStorage {
 
 	storeUserSwapToWBan(
 		banAddress: string,
+		blockchainAddress: string,
 		amount: BigNumber,
 		timestamp: number,
 		receipt: string,
