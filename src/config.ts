@@ -46,6 +46,8 @@ export default {
 	BlockchainNetworkChainId:
 		Number.parseInt(process.env.BC_NETWORK_CHAIN_ID, 10) ?? 0,
 	BlockchainWalletMnemonic: process.env.BC_WALLET_MMENOMIC ?? "",
+	BlockchainWalletMnemonicSignerIndex:
+		process.env.BC_WALLET_MMENOMIC_SIGNER_INDEX ?? 0,
 	BlockchainWalletPendingTransactionsThreadEnabled:
 		process.env.BC_PENDING_TXN_THREAD ?? true,
 	BlockchainWalletPendingTransactionsStartFromBlock:

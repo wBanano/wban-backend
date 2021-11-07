@@ -42,7 +42,8 @@ class Blockchain {
 				}
 			);
 			this.wallet = Wallet.fromMnemonic(
-				config.BlockchainWalletMnemonic
+				config.BlockchainWalletMnemonic,
+				`m/44'/60'/0'/0/${config.BlockchainWalletMnemonicSignerIndex}`
 			).connect(this.provider);
 			this.wBAN = WBANToken__factory.connect(
 				config.WBANContractAddress,
@@ -100,8 +101,8 @@ class Blockchain {
 		);
 		const uuid = Date.now();
 		const payload = ethers.utils.defaultAbiCoder.encode(
-			["address", "uint256", "uint256"],
-			[address, amount, uuid]
+			["address", "uint256", "uint256", "uint256"],
+			[address, amount, uuid, await this.wallet.getChainId()]
 		);
 		const payloadHash = ethers.utils.keccak256(payload);
 		const receipt = await this.wallet.signMessage(
