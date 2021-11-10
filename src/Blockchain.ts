@@ -131,9 +131,12 @@ class Blockchain {
 			);
 
 			for (let slice = 0; slice < numberOfSlices; slice += 1) {
-				this.log.trace(`Processing slice ${blockSliceFrom} -> ${blockSliceTo}`);
+				this.log.debug(`Processing slice ${blockSliceFrom} -> ${blockSliceTo}`);
 				// eslint-disable-next-line no-await-in-loop
 				await this.processBlocksSlice(blockSliceFrom, blockSliceTo);
+				console.debug(
+					`Processed blocks slice from ${blockSliceFrom} to ${blockSliceTo}...`
+				);
 				blockSliceFrom += blockSliceTo - blockSliceFrom + 1;
 				blockSliceTo += Math.min(BLOCK_SLICE, blockTo - blockSliceFrom + 1);
 			}
@@ -155,9 +158,12 @@ class Blockchain {
 				blockFrom,
 				blockTo
 			);
+			console.debug(logs);
 			const events = await Promise.all(
 				logs.map(async (log) => {
+					console.debug(log);
 					const parsedLog = this.wBAN.interface.parseLog(log);
+					console.debug(parsedLog);
 					const block = await this.provider.getBlock(log.blockNumber);
 					const { timestamp } = block;
 					const { from, banAddress, amount } = parsedLog.args;
