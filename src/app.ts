@@ -19,6 +19,7 @@ import BlockchainScanQueue from "./services/queuing/BlockchainScanQueue";
 import RedisBlockchainScanQueue from "./services/queuing/RedisBlockchainScanQueue";
 import History from "./models/responses/History";
 import { CoinExPricer } from "./prices/CoinExPricer";
+import KirbyBananoWalletsBlacklist from "./services/KirbyBananoWalletsBlacklist";
 
 const app: Application = express();
 // const sse: SSE = new SSE();
@@ -40,7 +41,8 @@ const blockchainScanQueue: BlockchainScanQueue = new RedisBlockchainScanQueue(
 const svc = new Service(
 	usersDepositsService,
 	processingQueue,
-	blockchainScanQueue
+	blockchainScanQueue,
+	new KirbyBananoWalletsBlacklist()
 );
 svc.start();
 
@@ -108,6 +110,11 @@ app.post("/claim", async (req: Request, res: Response) => {
 		case ClaimResponse.Ok:
 			res.send({
 				status: "OK",
+			});
+			break;
+		case ClaimResponse.Blacklisted:
+			res.status(403).send({
+				message: "This BAN wallet is blacklisted.",
 			});
 			break;
 		case ClaimResponse.AlreadyDone:

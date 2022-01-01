@@ -134,7 +134,7 @@ class Blockchain {
 				this.log.debug(`Processing slice ${blockSliceFrom} -> ${blockSliceTo}`);
 				// eslint-disable-next-line no-await-in-loop
 				await this.processBlocksSlice(blockSliceFrom, blockSliceTo);
-				console.debug(
+				this.log.debug(
 					`Processed blocks slice from ${blockSliceFrom} to ${blockSliceTo}...`
 				);
 				blockSliceFrom += blockSliceTo - blockSliceFrom + 1;

@@ -14,6 +14,8 @@ import ProcessingQueue from "../../src/services/queuing/ProcessingQueue";
 import BlockchainScanQueue from "../../src/services/queuing/BlockchainScanQueue";
 import BananoUserWithdrawal from "../../src/models/operations/BananoUserWithdrawal";
 import config from "../../src/config";
+import KirbyBananoWalletsBlacklist from "../../src/services/KirbyBananoWalletsBlacklist";
+import { BananoWalletsBlacklist } from "../../src/services/BananoWalletsBlacklist";
 
 const { expect } = chai;
 chai.use(sinonChai);
@@ -26,6 +28,7 @@ describe("Main Service", () => {
 	let blockchainScanQueue: sinon.StubbedInstance<BlockchainScanQueue> = null;
 	let blockchain: sinon.StubbedInstance<Blockchain> = null;
 	let banano: sinon.StubbedInstance<Banano> = null;
+	let bananoWalletsBlacklist: sinon.StubbedInstance<BananoWalletsBlacklist> = null;
 
 	beforeEach(async () => {
 		depositsService = sinon.stubInterface<UsersDepositsService>();
@@ -33,7 +36,13 @@ describe("Main Service", () => {
 		blockchainScanQueue = sinon.stubInterface<BlockchainScanQueue>();
 		blockchain = sinon.stubInterface<Blockchain>();
 		banano = sinon.stubInterface<Banano>();
-		svc = new Service(depositsService, processingQueue, blockchainScanQueue);
+		bananoWalletsBlacklist = sinon.stubInterface<BananoWalletsBlacklist>();
+		svc = new Service(
+			depositsService,
+			processingQueue,
+			blockchainScanQueue,
+			bananoWalletsBlacklist
+		);
 		svc.blockchain = blockchain;
 		svc.banano = banano;
 	});
@@ -83,6 +92,7 @@ describe("Main Service", () => {
 			const signature =
 				"0x521c2e1ae5e12da983b4a30bba29a6af4a24317c9378b124f5f5c2b69d96e945082322939fbdd1d8c351c218485934bbd6c997ae6d4066cbf81a24321cf18f551c";
 
+			bananoWalletsBlacklist.isBlacklisted.resolves(undefined);
 			depositsService.hasClaim
 				.withArgs(banWallet, blockchainWallet)
 				.onFirstCall()
@@ -120,6 +130,7 @@ describe("Main Service", () => {
 			const signature2 =
 				"0x6e0306e2daf7a3c9581b3d57b79eb34aad1b713a6d4426d38e0681d7a54d6aab534a36d44cac890e17d45efb173768817d4cfcdd04259d7137039a4fb90264141c";
 
+			bananoWalletsBlacklist.isBlacklisted.resolves(undefined);
 			depositsService.hasClaim
 				.withArgs(banWallet, blockchainWallet1)
 				.resolves(false)
@@ -144,6 +155,23 @@ describe("Main Service", () => {
 			).to.equal(ClaimResponse.InvalidOwner);
 
 			expect(depositsService.storePendingClaim).to.have.been.calledOnce;
+		});
+
+		it("Checks that a blacklisted BAN wallet can't be claimed", async () => {
+			const banWallet =
+				"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
+			const blockchainWallet = "0xec410E9F2756C30bE4682a7E29918082Adc12B55";
+			const signature =
+				"0x521c2e1ae5e12da983b4a30bba29a6af4a24317c9378b124f5f5c2b69d96e945082322939fbdd1d8c351c218485934bbd6c997ae6d4066cbf81a24321cf18f551c";
+
+			bananoWalletsBlacklist.isBlacklisted
+				.withArgs(banWallet)
+				.resolves({ address: banWallet, alias: "CoinEx", type: "" });
+
+			expect(await svc.claim(banWallet, blockchainWallet, signature)).to.equal(
+				ClaimResponse.Blacklisted
+			);
+			expect(depositsService.storePendingClaim).to.not.have.been.called;
 		});
 	});
 

@@ -16,6 +16,7 @@ import SwapBanToWBAN from "../models/operations/SwapBanToWBAN";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 import History from "../models/responses/History";
 import BlockchainScanQueue from "./queuing/BlockchainScanQueue";
+import { BananoWalletsBlacklist } from "./BananoWalletsBlacklist";
 
 class Service {
 	banano: Banano;
@@ -28,12 +29,15 @@ class Service {
 
 	private blockchainScanQueue: BlockchainScanQueue;
 
+	private bananoWalletsBlacklist: BananoWalletsBlacklist;
+
 	private log: Logger = config.Logger.getChildLogger();
 
 	constructor(
 		usersDepositsService: UsersDepositsService,
 		processingQueue: ProcessingQueue,
-		blockchainScanQueue: BlockchainScanQueue
+		blockchainScanQueue: BlockchainScanQueue,
+		bananoWalletsBlacklist: BananoWalletsBlacklist
 	) {
 		this.processingQueue = processingQueue;
 		this.blockchainScanQueue = blockchainScanQueue;
@@ -99,6 +103,7 @@ class Service {
 		);
 		this.blockchain.onSwapToBAN((swap: SwapWBANToBan) => this.swapToBAN(swap));
 		this.usersDepositsService = usersDepositsService;
+		this.bananoWalletsBlacklist = bananoWalletsBlacklist;
 	}
 
 	start(): void {
@@ -125,6 +130,16 @@ class Service {
 			)
 		) {
 			return ClaimResponse.InvalidSignature;
+		}
+		// check if the address is blacklisted
+		const blacklisted = await this.bananoWalletsBlacklist.isBlacklisted(
+			banWallet
+		);
+		if (blacklisted !== undefined) {
+			this.log.warn(
+				`Can't claim "${banWallet}. This is a blacklisted wallet linked to ${blacklisted.alias}`
+			);
+			return ClaimResponse.Blacklisted;
 		}
 		// check if the user already did the claim process
 		if (await this.usersDepositsService.hasClaim(banWallet, blockchainWallet)) {

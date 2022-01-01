@@ -4,6 +4,7 @@ enum ClaimResponse {
 	InvalidSignature,
 	InvalidOwner,
 	Error,
+	Blacklisted,
 }
 
 export { ClaimResponse };
