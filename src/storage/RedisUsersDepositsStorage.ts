@@ -340,47 +340,54 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		this.redlock
 			.lock(`locks:ban-balance:${swap.banWallet}`, 1_000)
 			.then(async (lock) => {
-				let rawBalance: string | null;
-				try {
-					rawBalance = await this.redis.get(
-						`ban-balance:${swap.banWallet.toLowerCase()}`
+				// check "again" if the txn wasn't already processed
+				if (await this.swapToBanWasAlreadyDone(swap)) {
+					this.log.warn(
+						`Swap for transaction "${swap.hash}" was already done.`
 					);
-					let balance: BigNumber;
-					if (rawBalance) {
-						balance = BigNumber.from(rawBalance);
-					} else {
-						balance = BigNumber.from(0);
-					}
-					balance = balance.add(ethers.utils.parseEther(swap.amount));
+				} else {
+					let rawBalance: string | null;
+					try {
+						rawBalance = await this.redis.get(
+							`ban-balance:${swap.banWallet.toLowerCase()}`
+						);
+						let balance: BigNumber;
+						if (rawBalance) {
+							balance = BigNumber.from(rawBalance);
+						} else {
+							balance = BigNumber.from(0);
+						}
+						balance = balance.add(ethers.utils.parseEther(swap.amount));
 
-					await this.redis
-						.multi()
-						.set(
-							`ban-balance:${swap.banWallet.toLowerCase()}`,
-							balance.toString()
-						)
-						.zadd(
-							`swaps:wban-to-ban:${swap.blockchainWallet.toLowerCase()}`,
-							swap.timestamp * 1_000,
-							swap.hash
-						)
-						.hset(`audit:${swap.hash}`, {
-							type: "swap-to-ban",
-							hash: swap.hash,
-							banAddress: swap.banWallet.toLowerCase(),
-							amount: ethers.utils.parseEther(swap.amount).toString(),
-							timestamp: swap.timestamp * 1_000,
-						})
-						.exec();
-					this.log.info(
-						`Stored user swap from wBAN of ${
-							swap.amount
-						} BAN from ${swap.blockchainWallet.toLowerCase()} to ${swap.banWallet.toLowerCase()} with hash: ${
-							swap.hash
-						}`
-					);
-				} catch (err) {
-					this.log.error(err);
+						await this.redis
+							.multi()
+							.set(
+								`ban-balance:${swap.banWallet.toLowerCase()}`,
+								balance.toString()
+							)
+							.zadd(
+								`swaps:wban-to-ban:${swap.blockchainWallet.toLowerCase()}`,
+								swap.timestamp * 1_000,
+								swap.hash
+							)
+							.hset(`audit:${swap.hash}`, {
+								type: "swap-to-ban",
+								hash: swap.hash,
+								banAddress: swap.banWallet.toLowerCase(),
+								amount: ethers.utils.parseEther(swap.amount).toString(),
+								timestamp: swap.timestamp * 1_000,
+							})
+							.exec();
+						this.log.info(
+							`Stored user swap from wBAN of ${
+								swap.amount
+							} BAN from ${swap.blockchainWallet.toLowerCase()} to ${swap.banWallet.toLowerCase()} with hash: ${
+								swap.hash
+							}`
+						);
+					} catch (err) {
+						this.log.error(err);
+					}
 				}
 				// unlock resource when done
 				return lock.unlock().catch((err) => this.log.error(err));
