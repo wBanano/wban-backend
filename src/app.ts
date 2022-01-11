@@ -27,7 +27,28 @@ const sseManager = new SSEManager();
 const PORT = 3000;
 const log: Logger = config.Logger.getChildLogger();
 
-app.use(cors());
+const corsWhitelist = [
+	"http://bsc.banano.cc",
+	"https://polygon.banano.cc",
+	"http://bsc-testnet.banano.cc",
+	"https://polygon-testnet.banano.cc",
+	"http://localhost:8080",
+];
+
+app.use(
+	cors({
+		origin(origin, callback) {
+			// allow requests with no origin
+			if (!origin) return callback(null, true);
+			if (corsWhitelist.indexOf(origin) === -1) {
+				const message =
+					"The CORS policy for this origin doesn't allow access from the particular origin.";
+				return callback(new Error(message), false);
+			}
+			return callback(null, true);
+		},
+	})
+);
 app.use(express.json());
 
 const usersDepositsStorage: UsersDepositsStorage = new RedisUsersDepositsStorage();
