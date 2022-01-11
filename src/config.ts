@@ -53,6 +53,8 @@ export default {
 	BlockchainWalletPendingTransactionsStartFromBlock:
 		Number.parseInt(process.env.BC_PENDING_BLOCKS_START, 10) ?? 0,
 
+	BlockchainDexTokensList: process.env.BC_DEX_TOKENS_LIST_URL ?? "",
+
 	WBANContractAddress: process.env.WBAN_CONTRACT_ADDRESS ?? "",
 
 	RedisHost: process.env.REDIS_HOST ?? "",
