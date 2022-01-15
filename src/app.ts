@@ -5,6 +5,7 @@ import { ethers } from "ethers";
 import SSEManager from "./services/sse/SSEManager";
 import { Service } from "./services/Service";
 import { TokensList } from "./services/TokensList";
+import { BlockchainGasPriceTracker } from "./services/BlockchainGasPriceTracker";
 import { UsersDepositsStorage } from "./storage/UsersDepositsStorage";
 import { RedisUsersDepositsStorage } from "./storage/RedisUsersDepositsStorage";
 import { UsersDepositsService } from "./services/UsersDepositsService";
@@ -60,6 +61,7 @@ const processingQueue: ProcessingQueue = new RedisProcessingQueue();
 const blockchainScanQueue: BlockchainScanQueue = new RedisBlockchainScanQueue(
 	usersDepositsService
 );
+const gasPriceTracker = new BlockchainGasPriceTracker();
 const tokensList = new TokensList();
 const svc = new Service(
 	usersDepositsService,
@@ -202,6 +204,10 @@ app.get("/prices", async (req: Request, res: Response) => {
 		eth: ethPrice,
 		matic: maticPrice,
 	});
+});
+
+app.get("/blockchain/gas-price", async (req: Request, res: Response) => {
+	res.type("json").send(await gasPriceTracker.getGasPriceTrackerData());
 });
 
 app.get("/dex/tokens", async (req: Request, res: Response) => {

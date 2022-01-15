@@ -42,6 +42,7 @@ export default {
 
 	BlockchainJsonRpc: process.env.BC_JSON_RPC_URL ?? "",
 	BlockchainBlockExplorerUrl: process.env.BC_BLOCK_EXPLORER_URL ?? "",
+	BlockchainGasPriceTrackerApi: process.env.BC_GAS_TRACKER_API ?? "",
 	BlockchainNetworkName: process.env.BC_NETWORK_NAME ?? "",
 	BlockchainNetworkChainId:
 		Number.parseInt(process.env.BC_NETWORK_CHAIN_ID, 10) ?? 0,
