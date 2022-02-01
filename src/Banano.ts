@@ -22,7 +22,7 @@ class Banano {
 
 	private usersDepositsService: UsersDepositsService;
 
-	private ws: WS.client;
+	private ws!: WS.client;
 
 	private processingQueue: ProcessingQueue;
 
@@ -95,6 +95,9 @@ class Banano {
 	}
 
 	private async wsMessageReceived(msg: WS.IMessage): Promise<void> {
+		if (!msg.utf8Data) {
+			throw new Error("No data in the WS message");
+		}
 		const notification = JSON.parse(msg.utf8Data);
 		const sender = notification.message.account;
 		const receiver = notification.message.block.link_as_account;
@@ -151,7 +154,8 @@ class Banano {
 		conn.sendUTF(JSON.stringify(subscriptionRequest));
 	}
 
-	private static wsConnectionFailed(err): void {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	private static wsConnectionFailed(err: any): void {
 		console.error(
 			`Couldn't connect to Banano WebSocket API at ${config.BananoWebSocketsAPI}`,
 			err
@@ -159,7 +163,8 @@ class Banano {
 		// TODO: exit?
 	}
 
-	private wsConnectionError(err): void {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	private wsConnectionError(err: any): void {
 		this.log.error("Unexpected WS error", err);
 		this.log.info("Reconnecting to WS API...");
 		this.subscribeToBananoNotificationsForWallet();

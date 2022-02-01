@@ -48,7 +48,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		return this.redlock
 			.lock(`locks:ban-balance:${from}`, 1_000)
 			.then(async (lock) => {
-				const rawAmount: string = await this.redis.get(
+				const rawAmount: string | null = await this.redis.get(
 					`ban-balance:${from.toLowerCase()}`
 				);
 				if (rawAmount === null) {
@@ -155,7 +155,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		this.log.info(
 			`Storing user deposit from: ${banAddress}, amount: ${amount} BAN, hash: ${hash}`
 		);
-		return this.redlock
+		this.redlock
 			.lock(`locks:ban-balance:${banAddress}`, 30_000)
 			.then(async (lock) => {
 				let rawBalance: string | null;
@@ -204,11 +204,11 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		this.log.info(
 			`Checking if user deposit transaction from ${banAddress.toLowerCase()} with hash ${hash} was already processed...`
 		);
-		const isAlreadyStored = await this.redis.zrank(
+		const isAlreadyStored: number | null = await this.redis.zrank(
 			`deposits:${banAddress.toLowerCase()}`,
 			hash
 		);
-		return isAlreadyStored > 0;
+		return isAlreadyStored != null;
 	}
 
 	async storeUserWithdrawal(
@@ -298,7 +298,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		);
 		await this.redlock
 			.lock(`locks:swaps:ban-to-wban:${banAddress}`, 1_000)
-			.then(async (lock) => {
+			.then(async (lock: Redlock.Lock) => {
 				try {
 					const balance = (await this.getUserAvailableBalance(banAddress)).sub(
 						amount
@@ -390,9 +390,11 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 					}
 				}
 				// unlock resource when done
-				return lock.unlock().catch((err) => this.log.error(err));
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				return lock.unlock().catch((err: any) => this.log.error(err));
 			})
-			.catch((err) => {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			.catch((err: any) => {
 				throw err;
 			});
 	}
@@ -403,11 +405,11 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 				swap.hash
 			} was already processed...`
 		);
-		const isAlreadyProcessed = await this.redis.zrank(
+		const isAlreadyProcessed: number | null = await this.redis.zrank(
 			`swaps:wban-to-ban:${swap.blockchainWallet.toLowerCase()}`,
 			swap.hash
 		);
-		return isAlreadyProcessed > 0;
+		return isAlreadyProcessed != null;
 	}
 
 	async getLastBlockchainBlockProcessed(): Promise<number> {

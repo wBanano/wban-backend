@@ -9,8 +9,8 @@ const { expect } = chai;
 chai.use(sinonChai);
 
 describe("Users Deposits Service", () => {
-	let svc: UsersDepositsService = null;
-	let storage: any = null;
+	let svc: UsersDepositsService;
+	let storage: any;
 
 	beforeEach(async () => {
 		storage = sinon.stubInterface<UsersDepositsStorage>();

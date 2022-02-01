@@ -22,11 +22,11 @@ class ProcessingQueueWorker extends Worker<any, any, string> {
 	}
 
 	async processQueueItem(job: Job): Promise<string> {
-		if (!this.processors.has(job.name)) {
+		const processor: Processor | undefined = this.processors.get(job.name);
+		if (!processor) {
 			this.log.error(`Can't find a processor for jobs named "${job.name}"`);
-			return;
+			throw new Error(`Can't find a processor for jobs named "${job.name}"`);
 		}
-		const processor: Processor = this.processors.get(job.name);
 		// eslint-disable-next-line consistent-return
 		return processor(job);
 	}

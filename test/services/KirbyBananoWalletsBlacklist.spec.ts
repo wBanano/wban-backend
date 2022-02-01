@@ -10,6 +10,9 @@ describe("Banano Wallets Blacklist", () => {
 			"ban_1nrcne47secz1hnm9syepdoob7t1r4xrhdzih3zohb1c3z178edd7b6ygc4x"
 		);
 		expect(coinex).to.not.be.undefined;
+		if (!coinex) {
+			throw Error();
+		}
 		expect(coinex.alias).to.equal("CoinEx");
 		expect(coinex.address).to.equal(
 			"ban_1nrcne47secz1hnm9syepdoob7t1r4xrhdzih3zohb1c3z178edd7b6ygc4x"

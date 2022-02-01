@@ -12,7 +12,7 @@ chai.use(sinonChai);
 chai.use(chaiAsPromised);
 
 describe("Blockchain Service", () => {
-	let svc: sinon.StubbedInstance<Blockchain> = null;
+	let svc: sinon.StubbedInstance<Blockchain>;
 
 	beforeEach(async () => {
 		const usersDepositsService = sinon.stubInterface<UsersDepositsService>();

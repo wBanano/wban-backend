@@ -22,13 +22,13 @@ chai.use(sinonChai);
 chai.use(chaiAsPromised);
 
 describe("Main Service", () => {
-	let svc: Service = null;
-	let depositsService: sinon.StubbedInstance<UsersDepositsService> = null;
-	let processingQueue: sinon.StubbedInstance<ProcessingQueue> = null;
-	let blockchainScanQueue: sinon.StubbedInstance<BlockchainScanQueue> = null;
-	let blockchain: sinon.StubbedInstance<Blockchain> = null;
-	let banano: sinon.StubbedInstance<Banano> = null;
-	let bananoWalletsBlacklist: sinon.StubbedInstance<BananoWalletsBlacklist> = null;
+	let svc: Service;
+	let depositsService: sinon.StubbedInstance<UsersDepositsService>;
+	let processingQueue: sinon.StubbedInstance<ProcessingQueue>;
+	let blockchainScanQueue: sinon.StubbedInstance<BlockchainScanQueue>;
+	let blockchain: sinon.StubbedInstance<Blockchain>;
+	let banano: sinon.StubbedInstance<Banano>;
+	let bananoWalletsBlacklist: sinon.StubbedInstance<BananoWalletsBlacklist>;
 
 	beforeEach(async () => {
 		depositsService = sinon.stubInterface<UsersDepositsService>();
@@ -313,6 +313,9 @@ describe("Main Service", () => {
 			banano.getBalance
 				.withArgs(config.BananoUsersDepositsHotWallet)
 				.resolves(ethers.utils.parseEther("300"));
+			banano.sendBan.resolves(
+				"6E3EB2D376517C188D8E621A8326E73D3C36295B84634F0C16354C4DE6ABE0F3"
+			);
 			// call the service twice...
 			await svc.processWithdrawBAN(withdrawal);
 			await expect(

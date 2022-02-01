@@ -15,9 +15,9 @@ chai.use(sinonChai);
 chai.use(chaiAsPromised);
 
 describe("Banano Service", () => {
-	let svc: sinon.StubbedInstance<Banano> = null;
-	let depositsService: sinon.StubbedInstance<UsersDepositsService> = null;
-	let processingQueue: sinon.StubbedInstance<ProcessingQueue> = null;
+	let svc: sinon.StubbedInstance<Banano>;
+	let depositsService: sinon.StubbedInstance<UsersDepositsService>;
+	let processingQueue: sinon.StubbedInstance<ProcessingQueue>;
 	const seed = "012EZSFS";
 	const seedIdx = 0;
 	const representative = "ban_mycrazyrep";

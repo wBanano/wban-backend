@@ -240,7 +240,7 @@ class Service {
 		// send the BAN to the user
 		const { pending, hash } = await this.eventuallySendBan(withdrawal);
 
-		if (pending) {
+		if (pending || !hash) {
 			return "";
 		}
 

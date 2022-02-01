@@ -16,13 +16,7 @@ const QUEUE_NAME = "operations-queue";
 class RedisProcessingQueue implements ProcessingQueue {
 	private processingQueue: Queue<Operation, any, string>;
 
-	private processingQueueEvents: QueueEvents;
-
 	private worker: ProcessingQueueWorker;
-
-	private queueScheduler: QueueScheduler;
-
-	private jobListener: JobListener;
 
 	public static PENDING_WITHDRAWAL_RETRY_DELAY = 1 * 60 * 1_000;
 
@@ -44,7 +38,7 @@ class RedisProcessingQueue implements ProcessingQueue {
 				removeOnFail: false,
 			},
 		});
-		this.processingQueueEvents = new QueueEvents(QUEUE_NAME, {
+		const processingQueueEvents = new QueueEvents(QUEUE_NAME, {
 			connection: {
 				host: config.RedisHost,
 			},
@@ -55,7 +49,7 @@ class RedisProcessingQueue implements ProcessingQueue {
 
 	start(): void {
 		this.worker.resume();
-		this.queueScheduler = new QueueScheduler(QUEUE_NAME, {
+		const queueScheduler = new QueueScheduler(QUEUE_NAME, {
 			connection: {
 				host: config.RedisHost,
 			},
@@ -75,10 +69,10 @@ class RedisProcessingQueue implements ProcessingQueue {
 			);
 			// const job = await Job.fromId(this.processingQueue, jobId);
 			this.log.trace(`Completed job: ${JSON.stringify(job)}`);
-			listener.onJobCompleted(job.id, job.name, job.returnvalue);
+			listener.onJobCompleted(job.id ?? job.name, job.name, job.returnvalue);
 		});
 		this.worker.on("failed", async (job: Job) => {
-			if (!job.id.startsWith("pending-")) {
+			if (job.id && !job.id.startsWith("pending-")) {
 				this.log.error(`Job "${job.name}" (ID: ${job.id}) failed`);
 				this.log.error(`Failure reason is:\n${job.failedReason}`);
 				this.log.error(`Stacktrace is:\n${job.stacktrace}`);
@@ -164,8 +158,10 @@ class RedisProcessingQueue implements ProcessingQueue {
 		return (
 			allJobs
 				// safeguard for pending withdrawals, although we don't expect anything else
-				.filter((job: Job) =>
-					job.id.startsWith(`pending-${OperationsNames.BananoWithdrawal}`)
+				.filter(
+					(job: Job) =>
+						job.id &&
+						job.id.startsWith(`pending-${OperationsNames.BananoWithdrawal}`)
 				)
 				// extract withdrawal amount
 				.map((job: Job) => {

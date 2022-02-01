@@ -29,7 +29,7 @@ export default {
 	BananoUsersDepositsColdWallet:
 		process.env.BANANO_USERS_DEPOSITS_COLD_WALLET ?? "",
 	BananoSeed: process.env.BANANO_SEED ?? "",
-	BananoSeedIdx: Number.parseInt(process.env.BANANO_SEED_INDEX, 10) ?? 0,
+	BananoSeedIdx: Number.parseInt(process.env.BANANO_SEED_INDEX ?? "0", 10),
 	BananoRepresentative: process.env.BANANO_REPRESENTATIVE ?? "",
 	BananoWebSocketsAPI: process.env.BANANO_WS_API ?? "",
 	BananoRPCAPI: process.env.BANANO_RPC_API ?? "",
@@ -44,15 +44,19 @@ export default {
 	BlockchainBlockExplorerUrl: process.env.BC_BLOCK_EXPLORER_URL ?? "",
 	BlockchainGasPriceTrackerApi: process.env.BC_GAS_TRACKER_API ?? "",
 	BlockchainNetworkName: process.env.BC_NETWORK_NAME ?? "",
-	BlockchainNetworkChainId:
-		Number.parseInt(process.env.BC_NETWORK_CHAIN_ID, 10) ?? 0,
+	BlockchainNetworkChainId: Number.parseInt(
+		process.env.BC_NETWORK_CHAIN_ID ?? "0",
+		10
+	),
 	BlockchainWalletMnemonic: process.env.BC_WALLET_MMENOMIC ?? "",
 	BlockchainWalletMnemonicSignerIndex:
 		process.env.BC_WALLET_MMENOMIC_SIGNER_INDEX ?? 0,
 	BlockchainWalletPendingTransactionsThreadEnabled:
 		process.env.BC_PENDING_TXN_THREAD ?? true,
-	BlockchainWalletPendingTransactionsStartFromBlock:
-		Number.parseInt(process.env.BC_PENDING_BLOCKS_START, 10) ?? 0,
+	BlockchainWalletPendingTransactionsStartFromBlock: Number.parseInt(
+		process.env.BC_PENDING_BLOCKS_START ?? "0",
+		10
+	),
 
 	BlockchainDexTokensList: process.env.BC_DEX_TOKENS_LIST_URL ?? "",
 

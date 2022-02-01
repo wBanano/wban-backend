@@ -14,11 +14,13 @@
 	"devDependencies": {
 		"@types/chai": "^4.2.17",
 		"@types/chai-as-promised": "^7.1.3",
+		"@types/cors": "^2.8.12",
 		"@types/dotenv": "^8.2.0",
 		"@types/express": "^4.17.11",
 		"@types/mocha": "^8.2.2",
 		"@types/node": "^14.14.20",
 		"@types/node-cron": "^2.0.3",
+		"@types/redlock": "^4.0.3",
 		"@types/websocket": "^1.0.2",
 		"@typescript-eslint/eslint-plugin": "^4.22.0",
 		"@typescript-eslint/parser": "^4.22.0",
@@ -68,9 +70,9 @@
 		"*.{ts,js}": "eslint --cache --fix"
 	},
 	"nyc": {
-		"lines": 50.82,
+		"lines": 50.59,
 		"functions": 30.67,
-		"branches": 56.08,
-		"statements": 50.82
+		"branches": 57.24,
+		"statements": 50.58
 	}
 }

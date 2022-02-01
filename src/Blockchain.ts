@@ -12,11 +12,11 @@ import config from "./config";
 import BlockchainScanQueue from "./services/queuing/BlockchainScanQueue";
 
 class Blockchain {
-	private wBAN: WBANToken;
+	private wBAN!: WBANToken;
 
-	private wallet: Wallet;
+	private wallet!: Wallet;
 
-	private provider: ethers.providers.JsonRpcProvider;
+	private provider!: ethers.providers.JsonRpcProvider;
 
 	private listeners: SwapToBanEventListener[] = [];
 
