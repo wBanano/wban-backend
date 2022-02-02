@@ -30,9 +30,9 @@ const PORT = 3000;
 const log: Logger = config.Logger.getChildLogger();
 
 const corsWhitelist = [
-	"http://bsc.banano.cc",
+	"https://bsc.banano.cc",
 	"https://polygon.banano.cc",
-	"http://bsc-testnet.banano.cc",
+	"https://bsc-testnet.banano.cc",
 	"https://polygon-testnet.banano.cc",
 	"http://localhost:8080",
 ];
