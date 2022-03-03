@@ -32,8 +32,10 @@ const log: Logger = config.Logger.getChildLogger();
 const corsWhitelist = [
 	"https://bsc.banano.cc",
 	"https://polygon.banano.cc",
+	"https://fantom.banano.cc",
 	"https://bsc-testnet.banano.cc",
 	"https://polygon-testnet.banano.cc",
+	"https://fantom-testnet.banano.cc",
 	"http://localhost:8080",
 ];
 
