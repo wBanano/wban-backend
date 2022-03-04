@@ -53,7 +53,7 @@ class RedisBlockchainScanQueue implements BlockchainScanQueue {
 				"bc-scan",
 				{
 					blockFrom: latestBlockProcessed + 1,
-					blockTo: Math.min(latestBlockProcessed + 1000, currentBlock),
+					blockTo: Math.min(latestBlockProcessed + 10_000, currentBlock),
 				},
 				{
 					jobId: `${latestBlockProcessed + 1}-${currentBlock}`,
