@@ -36,6 +36,7 @@ const corsWhitelist = [
 	"https://bsc-testnet.banano.cc",
 	"https://polygon-testnet.banano.cc",
 	"https://fantom-testnet.banano.cc",
+	"https://wrap.banano.cc",
 	"https://wban-universal-dapp.netlify.app",
 	"http://localhost:8080",
 ];
