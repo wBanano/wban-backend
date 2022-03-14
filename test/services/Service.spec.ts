@@ -98,6 +98,10 @@ describe("Main Service", () => {
 				.onFirstCall()
 				.resolves(false)
 				.onSecondCall()
+				.resolves(false)
+				.onThirdCall()
+				.resolves(true)
+				.onCall(3)
 				.resolves(true);
 			depositsService.hasPendingClaim
 				.withArgs(banWallet)
@@ -109,8 +113,14 @@ describe("Main Service", () => {
 				.withArgs(banWallet, blockchainWallet)
 				.returns(Promise.resolve(true));
 
+			expect(await svc.claimAvailable(banWallet, blockchainWallet)).to.equal(
+				false
+			);
 			expect(await svc.claim(banWallet, blockchainWallet, signature)).to.equal(
 				ClaimResponse.Ok
+			);
+			expect(await svc.claimAvailable(banWallet, blockchainWallet)).to.equal(
+				true
 			);
 			expect(await svc.claim(banWallet, blockchainWallet, signature)).to.equal(
 				ClaimResponse.AlreadyDone

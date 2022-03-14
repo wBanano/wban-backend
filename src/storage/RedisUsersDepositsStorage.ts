@@ -125,10 +125,10 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		banAddress: string,
 		blockchainAddress: string
 	): Promise<boolean> {
-		const pendingClaims = await this.redis.keys(
+		const claims = await this.redis.keys(
 			`claims:${banAddress.toLowerCase()}:${blockchainAddress.toLowerCase()}`
 		);
-		const exists = pendingClaims.length > 0;
+		const exists = claims.length > 0;
 		this.log.trace(
 			`Checked if there is a claim for ${banAddress.toLowerCase()}: ${exists}`
 		);

@@ -123,6 +123,23 @@ app.get("/withdrawals/pending", async (req: Request, res: Response) => {
 	});
 });
 
+app.get(
+	"/claim/:ban_wallet/:bc_wallet",
+	async (req: Request, res: Response) => {
+		const banWallet = req.params.ban_wallet;
+		const bcWallet = req.params.bc_wallet;
+		log.info(`Check if claim exists for ${banWallet} and ${bcWallet}`);
+		const claimDone = await svc.claimAvailable(banWallet, bcWallet);
+		if (claimDone) {
+			res.status(202).send({
+				status: "Claim done",
+			});
+		} else {
+			res.status(404).send();
+		}
+	}
+);
+
 app.post("/claim", async (req: Request, res: Response) => {
 	// TODO: make sure all required parameters are sent!
 	const claimRequest: ClaimRequest = req.body as ClaimRequest;

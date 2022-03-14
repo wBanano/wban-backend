@@ -116,6 +116,14 @@ class Service {
 		return this.usersDepositsService.getUserAvailableBalance(from);
 	}
 
+	// check if the user already claimed his addresses
+	async claimAvailable(
+		banWallet: string,
+		blockchainWallet: string
+	): Promise<boolean> {
+		return this.usersDepositsService.hasClaim(banWallet, blockchainWallet);
+	}
+
 	async claim(
 		banWallet: string,
 		blockchainWallet: string,
