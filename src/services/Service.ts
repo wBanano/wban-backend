@@ -150,8 +150,14 @@ class Service {
 			return ClaimResponse.Blacklisted;
 		}
 		// check if the user already did the claim process
-		if (await this.usersDepositsService.hasClaim(banWallet, blockchainWallet)) {
-			return ClaimResponse.AlreadyDone;
+		if (await this.usersDepositsService.isClaimed(banWallet)) {
+			const claimedFromOriginalOwner = await this.usersDepositsService.hasClaim(
+				banWallet,
+				blockchainWallet
+			);
+			return claimedFromOriginalOwner
+				? ClaimResponse.AlreadyDone
+				: ClaimResponse.InvalidOwner;
 		}
 		// check if there is a pending claim
 		if (!(await this.usersDepositsService.hasPendingClaim(banWallet))) {
@@ -162,7 +168,7 @@ class Service {
 				? ClaimResponse.Ok
 				: ClaimResponse.Error;
 		}
-		// assume this is another use who tried to do this
+		// assume this is another user who tried to do this
 		return ClaimResponse.InvalidOwner;
 	}
 

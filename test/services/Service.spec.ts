@@ -16,6 +16,7 @@ import BananoUserWithdrawal from "../../src/models/operations/BananoUserWithdraw
 import config from "../../src/config";
 import KirbyBananoWalletsBlacklist from "../../src/services/KirbyBananoWalletsBlacklist";
 import { BananoWalletsBlacklist } from "../../src/services/BananoWalletsBlacklist";
+import { on } from "events";
 
 const { expect } = chai;
 chai.use(sinonChai);
@@ -85,7 +86,7 @@ describe("Main Service", () => {
 	});
 
 	describe("Claims for BAN wallet", () => {
-		it("Checks that a BAN wallet can't be claimed multiple times by the same Blockchain user", async () => {
+		it("Checks that a BAN wallet can be claimed multiple times by the same Blockchain user", async () => {
 			const banWallet =
 				"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
 			const blockchainWallet = "0xec410E9F2756C30bE4682a7E29918082Adc12B55";
@@ -93,15 +94,18 @@ describe("Main Service", () => {
 				"0x521c2e1ae5e12da983b4a30bba29a6af4a24317c9378b124f5f5c2b69d96e945082322939fbdd1d8c351c218485934bbd6c997ae6d4066cbf81a24321cf18f551c";
 
 			bananoWalletsBlacklist.isBlacklisted.resolves(undefined);
+			depositsService.isClaimed
+				.onFirstCall()
+				.resolves(false)
+				.onSecondCall()
+				.resolves(true);
 			depositsService.hasClaim
 				.withArgs(banWallet, blockchainWallet)
 				.onFirstCall()
 				.resolves(false)
 				.onSecondCall()
-				.resolves(false)
-				.onThirdCall()
 				.resolves(true)
-				.onCall(3)
+				.onThirdCall()
 				.resolves(true);
 			depositsService.hasPendingClaim
 				.withArgs(banWallet)
@@ -141,6 +145,11 @@ describe("Main Service", () => {
 				"0x6e0306e2daf7a3c9581b3d57b79eb34aad1b713a6d4426d38e0681d7a54d6aab534a36d44cac890e17d45efb173768817d4cfcdd04259d7137039a4fb90264141c";
 
 			bananoWalletsBlacklist.isBlacklisted.resolves(undefined);
+			depositsService.isClaimed
+				.onFirstCall()
+				.resolves(false)
+				.onSecondCall()
+				.resolves(false);
 			depositsService.hasClaim
 				.withArgs(banWallet, blockchainWallet1)
 				.resolves(false)
@@ -165,6 +174,40 @@ describe("Main Service", () => {
 			).to.equal(ClaimResponse.InvalidOwner);
 
 			expect(depositsService.storePendingClaim).to.have.been.calledOnce;
+		});
+
+		it("Checks that a BAN wallet already claimed can't be claimed by another user", async () => {
+			const banWallet =
+				"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
+
+			const blockchainWallet1 = "0xec410E9F2756C30bE4682a7E29918082Adc12B55";
+			const signature1 =
+				"0x521c2e1ae5e12da983b4a30bba29a6af4a24317c9378b124f5f5c2b69d96e945082322939fbdd1d8c351c218485934bbd6c997ae6d4066cbf81a24321cf18f551c";
+
+			const blockchainWallet2 = "0x69FD25B60Da76Afd10D8Fc7306f10f2934fC4829";
+			const signature2 =
+				"0x6e0306e2daf7a3c9581b3d57b79eb34aad1b713a6d4426d38e0681d7a54d6aab534a36d44cac890e17d45efb173768817d4cfcdd04259d7137039a4fb90264141c";
+
+			bananoWalletsBlacklist.isBlacklisted.resolves(undefined);
+			depositsService.isClaimed.resolves(true);
+			depositsService.hasClaim
+				.withArgs(banWallet, blockchainWallet1)
+				.resolves(true)
+				.withArgs(banWallet, blockchainWallet2)
+				.resolves(false);
+			depositsService.hasPendingClaim
+				.withArgs(banWallet)
+				//.onFirstCall()
+				.resolves(true);
+			depositsService.storePendingClaim
+				.withArgs(banWallet, blockchainWallet1)
+				.returns(Promise.resolve(true));
+
+			expect(
+				await svc.claim(banWallet, blockchainWallet2, signature2)
+			).to.equal(ClaimResponse.InvalidOwner);
+
+			expect(depositsService.storePendingClaim).to.not.have.been.called;
 		});
 
 		it("Checks that a blacklisted BAN wallet can't be claimed", async () => {
