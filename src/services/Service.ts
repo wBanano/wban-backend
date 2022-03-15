@@ -224,10 +224,10 @@ class Service {
 		}
 
 		// verify is the claim was previously done
-		if (!this.usersDepositsService.isClaimed(banWallet)) {
+		if (!(await this.usersDepositsService.isClaimed(banWallet))) {
 			throw new Error(`Can't withdraw from unclaimed wallet ${banWallet}`);
 		} else if (
-			!this.usersDepositsService.hasClaim(banWallet, blockchainWallet)
+			!(await this.usersDepositsService.hasClaim(banWallet, blockchainWallet))
 		) {
 			throw new Error("Can't withdraw from another Blockchain wallet");
 		}
