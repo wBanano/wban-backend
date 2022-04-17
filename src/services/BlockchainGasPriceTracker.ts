@@ -9,7 +9,7 @@ class BlockchainGasPriceTracker {
 	constructor() {
 		this.api = setup({
 			cache: {
-				maxAge: 5 * 1000, // cache for 15 seconds
+				maxAge: 5 * 1000, // cache for 5 seconds
 			},
 		});
 	}

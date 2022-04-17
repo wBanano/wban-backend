@@ -15,7 +15,7 @@ class KirbyBananoWalletsBlacklist implements BananoWalletsBlacklist {
 	constructor() {
 		this.api = setup({
 			cache: {
-				maxAge: 60 * 60 * 1000,
+				maxAge: 60 * 60 * 1000, // cache for 1 hour
 			},
 		});
 	}
