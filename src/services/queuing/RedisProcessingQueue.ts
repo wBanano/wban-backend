@@ -6,6 +6,7 @@ import BananoUserDeposit from "../../models/operations/BananoUserDeposit";
 import BananoUserWithdrawal from "../../models/operations/BananoUserWithdrawal";
 import SwapBanToWBAN from "../../models/operations/SwapBanToWBAN";
 import SwapWBANToBan from "../../models/operations/SwapWBANToBan";
+import GaslessSwap from "../../models/operations/GaslessSwap";
 import ProcessingQueue from "./ProcessingQueue";
 import ProcessingQueueWorker from "./ProcessingQueueWorker";
 import config from "../../config";
@@ -146,6 +147,22 @@ class RedisProcessingQueue implements ProcessingQueue {
 		);
 		this.log.debug(
 			`Added swap wBAN -> BAN to queue: '${job.id}' -- ${JSON.stringify(swap)}`
+		);
+	}
+
+	async addGaslessSwap(banWallet: string, swap: GaslessSwap): Promise<void> {
+		const jobData: any = swap;
+		jobData.banWallet = banWallet;
+		const job = await this.processingQueue.add(
+			OperationsNames.GaslessSwapToETH,
+			jobData,
+			{
+				jobId: `${OperationsNames.GaslessSwapToETH}-${banWallet}-${swap.recipient}`,
+				timestamp: new Date().getTime(),
+			}
+		);
+		this.log.debug(
+			`Added gasless swap to queue: '${job.id}' -- ${JSON.stringify(swap)}`
 		);
 	}
 

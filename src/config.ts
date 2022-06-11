@@ -60,7 +60,16 @@ export default {
 
 	BlockchainDexTokensList: process.env.BC_DEX_TOKENS_LIST_URL ?? "",
 
+	BlockchainGasLessBananoThreshold:
+		process.env.BC_GASLESS_BAN_THRESHOLD ?? 1000,
+	BlockchainGasLessCryptoBalanceThreshold:
+		process.env.BC_GASLESS_CRYPTO_THRESHOLD ?? 1,
+	BlockchainRelayerEnabled: process.env.BC_RELAYER_ENABLED === 'true',
+	BlockchainRelayerApiKey: process.env.BC_RELAYER_API_KEY ?? "",
+	BlockchainRelayerSecretKey: process.env.BC_RELAYER_SECRET_KEY ?? "",
+
 	WBANContractAddress: process.env.WBAN_CONTRACT_ADDRESS ?? "",
+	WBANGaslessSwapAddress: process.env.WBAN_GASLESS_SWAP_ADDRESS ?? "",
 
 	RedisHost: process.env.REDIS_HOST ?? "",
 

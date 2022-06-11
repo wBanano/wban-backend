@@ -20,11 +20,11 @@ import RedisProcessingQueue from "./services/queuing/RedisProcessingQueue";
 import BlockchainScanQueue from "./services/queuing/BlockchainScanQueue";
 import RedisBlockchainScanQueue from "./services/queuing/RedisBlockchainScanQueue";
 import History from "./models/responses/History";
+import GaslessSwap from "./models/operations/GaslessSwap";
 import { CoinExPricer } from "./prices/CoinExPricer";
 import KirbyBananoWalletsBlacklist from "./services/KirbyBananoWalletsBlacklist";
 
 const app: Application = express();
-// const sse: SSE = new SSE();
 const sseManager = new SSEManager();
 const PORT = 3000;
 const log: Logger = config.Logger.getChildLogger();
@@ -73,8 +73,40 @@ const svc = new Service(
 );
 svc.start();
 
-app.get("/health", (req: Request, res: Response) => {
-	// TODO: check if connections to Banano node, Blockchain node and Redis node are okay!
+app.get("/health", async (req: Request, res: Response) => {
+	// check Blockchain connectivity by checking balance of an account
+	try {
+		await svc.blockchain.getWalletBalance();
+	} catch (e) {
+		log.error("Can't request Blockchain balance", e);
+		res.status(503).send({
+			status: "Can't request Blockchain balance",
+		});
+		return;
+	}
+
+	// check Banano connectivity by checking balance of an account
+	try {
+		await svc.banano.getBalance('ban_1wban1mwe1ywc7dtknaqdbog5g3ah333acmq8qxo5anibjqe4fqz9x3xz6ky');
+	} catch (e) {
+		log.error("Can't request Banano balance", e);
+		res.status(503).send({
+			status: "Can't request Banano balance",
+		});
+		return;
+	}
+
+	// check connection to Redis node
+	try {
+		usersDepositsStorage.isClaimed('ban_1wban1mwe1ywc7dtknaqdbog5g3ah333acmq8qxo5anibjqe4fqz9x3xz6ky');
+	} catch (e) {
+		log.error("Can't make Redis query", e);
+		res.status(503).send({
+			status: "Can't make Redis query",
+		});
+		return;
+	}
+
 	res.send({
 		status: "OK",
 	});
@@ -182,7 +214,6 @@ app.post("/claim", async (req: Request, res: Response) => {
 });
 
 app.post("/swap", async (req: Request, res: Response) => {
-	// TODO: make sure all required parameters are sent!
 	const swapRequest: SwapRequest = req.body as SwapRequest;
 	const banAmount: number = swapRequest.amount;
 	const banWallet: string = swapRequest.ban;
@@ -239,6 +270,33 @@ app.get("/blockchain/gas-price", async (req: Request, res: Response) => {
 
 app.get("/dex/tokens", async (req: Request, res: Response) => {
 	res.type("json").send(await tokensList.getTokensList());
+});
+
+app.get("/gasless/settings", async (req: Request, res: Response) => {
+	res.type("json").send({
+		enabled: config.BlockchainRelayerEnabled,
+		banThreshold: config.BlockchainGasLessBananoThreshold,
+		cryptoThreshold: config.BlockchainGasLessCryptoBalanceThreshold,
+	});
+});
+
+app.get("/gasless/settings/:ban", async (req: Request, res: Response) => {
+	const banWallet = req.params.ban;
+	const freeSwapDone = await usersDepositsService.isFreeSwapAlreadyDone(banWallet);
+	res.type("json").send({
+		gaslessSwapAllowed: !freeSwapDone,
+	});
+});
+
+app.post("/gasless/swap/:ban", async (req: Request, res: Response) => {
+	const banWallet = req.params.ban;
+	const swap: GaslessSwap = req.body;
+	try {
+		await svc.gaslessSwap(banWallet, swap);
+		res.status(200).send();
+	} catch (err: unknown) {
+		res.status(500).send(err);
+	}
 });
 
 /*

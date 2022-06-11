@@ -42,6 +42,10 @@ class UsersDepositsService {
 		return this.usersDepositsStorage.isClaimed(banAddress);
 	}
 
+	async isClaimedFromETH(blockchainAddress: string): Promise<boolean> {
+		return this.usersDepositsStorage.isClaimedFromETH(blockchainAddress);
+	}
+
 	async hasClaim(
 		banAddress: string,
 		blockchainAddress: string
@@ -163,6 +167,14 @@ class UsersDepositsService {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	getSwaps(blockchainAddress: string, banWallet: string): Promise<Array<any>> {
 		return this.usersDepositsStorage.getSwaps(blockchainAddress, banWallet);
+	}
+
+	async isFreeSwapAlreadyDone(from: string): Promise<boolean> {
+		return this.usersDepositsStorage.isFreeSwapAlreadyDone(from);
+	}
+
+	async storeFreeSwap(from: string, txnId: string): Promise<void> {
+		return this.usersDepositsStorage.storeFreeSwap(from, txnId);
 	}
 }
 

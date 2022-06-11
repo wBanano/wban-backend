@@ -6,6 +6,7 @@ import BananoUserDeposit from "../../models/operations/BananoUserDeposit";
 import BananoUserWithdrawal from "../../models/operations/BananoUserWithdrawal";
 import SwapBanToWBAN from "../../models/operations/SwapBanToWBAN";
 import SwapWBANToBan from "../../models/operations/SwapWBANToBan";
+import GaslessSwap from "../../models/operations/GaslessSwap";
 
 interface ProcessingQueue {
 	start(): void;
@@ -20,6 +21,8 @@ interface ProcessingQueue {
 
 	addSwapToWBan(swap: SwapBanToWBAN): Promise<string>;
 	addSwapToBan(swap: SwapWBANToBan): Promise<string>;
+
+	addGaslessSwap(banWallet: string, swap: GaslessSwap): Promise<void>;
 
 	getPendingWithdrawalsAmount(): Promise<BigNumber>;
 }

@@ -14,9 +14,7 @@ import ProcessingQueue from "../../src/services/queuing/ProcessingQueue";
 import BlockchainScanQueue from "../../src/services/queuing/BlockchainScanQueue";
 import BananoUserWithdrawal from "../../src/models/operations/BananoUserWithdrawal";
 import config from "../../src/config";
-import KirbyBananoWalletsBlacklist from "../../src/services/KirbyBananoWalletsBlacklist";
 import { BananoWalletsBlacklist } from "../../src/services/BananoWalletsBlacklist";
-import { on } from "events";
 
 const { expect } = chai;
 chai.use(sinonChai);
@@ -406,6 +404,7 @@ describe("Main Service", () => {
 				.resolves(true)
 				.withArgs(banWallet, blockchainWallet2)
 				.resolves(false);
+			depositsService.getSwaps.resolves([{}]);
 			blockchain.createMintReceipt
 				.withArgs(blockchainWallet1, amount)
 				.resolves({

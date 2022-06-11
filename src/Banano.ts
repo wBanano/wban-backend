@@ -94,7 +94,8 @@ class Banano {
 		this.ws.connect(`ws://${config.BananoWebSocketsAPI}`);
 	}
 
-	private async wsMessageReceived(msg: WS.IMessage): Promise<void> {
+	private async wsMessageReceived(_msg: WS.Message): Promise<void> {
+		const msg = _msg as WS.IUtf8Message;
 		if (!msg.utf8Data) {
 			throw new Error("No data in the WS message");
 		}

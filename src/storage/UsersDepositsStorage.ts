@@ -15,6 +15,7 @@ interface UsersDepositsStorage {
 		blockchainAddress: string
 	): Promise<boolean>;
 	isClaimed(banAddress: string): Promise<boolean>;
+	isClaimedFromETH(blockchainAddress: string): Promise<boolean>;
 	hasClaim(banAddress: string, blockchainAddress: string): Promise<boolean>;
 	confirmClaim(banAddress: string): Promise<boolean>;
 
@@ -59,6 +60,9 @@ interface UsersDepositsStorage {
 	getWithdrawals(banAddress: string): Promise<Array<any>>;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	getSwaps(blockchainAddress: string, banAddress: string): Promise<Array<any>>;
+
+	isFreeSwapAlreadyDone(from: string): Promise<boolean>;
+	storeFreeSwap(from: string, txnId: string): Promise<void>;
 }
 
 export { UsersDepositsStorage };

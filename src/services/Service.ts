@@ -1,6 +1,17 @@
 import { Logger } from "tslog";
-import { BigNumber, ethers } from "ethers";
+import { BigNumber, ethers, Signature } from "ethers";
 import { Processor } from "bullmq";
+import { Relayer, RelayerTransaction } from "defender-relay-client";
+import {
+	DefenderRelaySigner,
+	DefenderRelayProvider,
+} from "defender-relay-client/lib/ethers";
+import {
+	// eslint-disable-next-line camelcase
+	WBANTokenWithPermit__factory,
+	// eslint-disable-next-line camelcase
+	WBANGaslessSwap__factory,
+} from "wban-smart-contract";
 import { Banano } from "../Banano";
 import config from "../config";
 import { UsersDepositsService } from "./UsersDepositsService";
@@ -14,6 +25,7 @@ import { OperationsNames } from "../models/operations/Operation";
 import BananoUserWithdrawal from "../models/operations/BananoUserWithdrawal";
 import SwapBanToWBAN from "../models/operations/SwapBanToWBAN";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
+import GaslessSwap from "../models/operations/GaslessSwap";
 import History from "../models/responses/History";
 import BlockchainScanQueue from "./queuing/BlockchainScanQueue";
 import { BananoWalletsBlacklist } from "./BananoWalletsBlacklist";
@@ -30,6 +42,11 @@ class Service {
 	private blockchainScanQueue: BlockchainScanQueue;
 
 	private bananoWalletsBlacklist: BananoWalletsBlacklist;
+
+	private relayer: Relayer | undefined;
+	private relayerSigner: DefenderRelaySigner | undefined;
+
+	private sleep = (ms: number) => new Promise((resolve: any) => setTimeout(resolve, ms))
 
 	private log: Logger = config.Logger.getChildLogger();
 
@@ -62,15 +79,21 @@ class Service {
 			OperationsNames.SwapToWBAN,
 			async (job) => {
 				const swap: SwapBanToWBAN = job.data;
-				const { receipt, uuid, wbanBalance } = await this.processSwapToWBAN(
-					swap
-				);
+				const {
+					receipt,
+					uuid,
+					wbanBalance,
+					gasless,
+					txnHash,
+				} = await this.processSwapToWBAN(swap);
 				return {
 					banWallet: swap.from,
 					blockchainWallet: swap.blockchainWallet,
 					swapped: swap.amount,
 					receipt,
 					uuid,
+					gasless,
+					txnHash,
 					balance: ethers.utils.formatEther(
 						await this.usersDepositsService.getUserAvailableBalance(swap.from)
 					),
@@ -97,6 +120,18 @@ class Service {
 				};
 			}
 		);
+		this.processingQueue.registerProcessor(
+			OperationsNames.GaslessSwapToETH,
+			async (job) => {
+				const swap: GaslessSwap & { banWallet: string }  = job.data;
+				const { txnId, txnHash } = await this.processGaslessSwap(swap);
+				return {
+					txnId,
+					txnHash,
+					txnLink: `${config.BlockchainBlockExplorerUrl}/tx/${txnHash}`,
+				};
+			}
+		);
 		this.blockchain = new Blockchain(
 			usersDepositsService,
 			this.blockchainScanQueue
@@ -104,6 +139,19 @@ class Service {
 		this.blockchain.onSwapToBAN((swap: SwapWBANToBan) => this.swapToBAN(swap));
 		this.usersDepositsService = usersDepositsService;
 		this.bananoWalletsBlacklist = bananoWalletsBlacklist;
+
+		if (config.BlockchainRelayerEnabled === true) {
+			const credentials = {
+				apiKey: config.BlockchainRelayerApiKey,
+				apiSecret: config.BlockchainRelayerSecretKey,
+			};
+			this.relayer = new Relayer(credentials);
+			const provider = new DefenderRelayProvider(credentials);
+			this.relayerSigner = new DefenderRelaySigner(credentials, provider, {
+				speed: "fast",
+				validForSeconds: 300, // relayed transaction valid for 5 minutes
+			});
+		}
 	}
 
 	start(): void {
@@ -338,7 +386,55 @@ class Service {
 			receipt,
 			uuid
 		);
-		return { receipt, uuid, wbanBalance };
+
+		// if first wrap request, make a gasless transaction
+		let gasless = false;
+		let txnHash = "";
+		const wrapCount = (
+			await this.usersDepositsService.getSwaps(blockchainWallet, from)
+		).length;
+		if (
+			this.relayerSigner &&
+			wrapCount === 1 &&
+			amountStr >= config.BlockchainGasLessBananoThreshold
+		) {
+			const cryptoBalance = await this.relayerSigner.provider.getBalance(
+				blockchainWallet
+			);
+			const cryptoThreshold = ethers.utils.parseEther(
+				config.BlockchainGasLessCryptoBalanceThreshold.toString()
+			);
+			if (cryptoBalance.lte(cryptoThreshold)) {
+				this.log.info(
+					`Gasless wrap from ${blockchainWallet} from ${amountStr} BAN with UUID ${uuid} and receipt ${receipt}`
+				);
+				gasless = true;
+				// eslint-disable-next-line camelcase
+				const wBAN = WBANTokenWithPermit__factory.connect(
+					config.WBANContractAddress,
+					this.relayerSigner
+				);
+				const sig: Signature = ethers.utils.splitSignature(receipt);
+				const tx: any = await wBAN.mintWithReceipt(
+					blockchainWallet,
+					amount,
+					uuid,
+					sig.v,
+					sig.r,
+					sig.s
+				);
+				const relayedTx = await this.waitForRelayedTx(tx.transactionId);
+				txnHash = relayedTx.hash;
+			} else {
+				this.log.warn(
+					`Gasless wrap from ${blockchainWallet} ignored. Balance of ${ethers.utils.formatEther(
+						cryptoBalance
+					)} > ${ethers.utils.formatEther(cryptoThreshold)} ETH`
+				);
+			}
+		}
+
+		return { receipt, uuid, wbanBalance, gasless, txnHash };
 	}
 
 	async swapToBAN(swap: SwapWBANToBan): Promise<string> {
@@ -385,6 +481,67 @@ class Service {
 		return this.processingQueue.getPendingWithdrawalsAmount();
 	}
 
+	async gaslessSwap(banWallet: string, swap: GaslessSwap): Promise<void> {
+		this.processingQueue.addGaslessSwap(banWallet, swap);
+	}
+
+	async processGaslessSwap(
+		swap: GaslessSwap & { banWallet: string }
+	): Promise<{ txnId: string; txnHash: string }> {
+		if (!config.BlockchainRelayerEnabled || !this.relayerSigner) {
+			this.log.warn("Relayer is turned off. Skipping gasless swap requests");
+			throw new Error("Relayer is turned off. Skipping gasless swap requests");
+		}
+		const from = swap.recipient;
+		if (!from) {
+			this.log.warn("Missing address from transaction");
+			throw new Error("Missing address from transaction");
+		}
+		// check user balance is below ETH threshold
+		const cryptoBalance = await this.relayerSigner.provider.getBalance(from);
+		const cryptoThreshold = ethers.utils.parseEther(
+			config.BlockchainGasLessCryptoBalanceThreshold.toString()
+		);
+		if (cryptoBalance.gt(cryptoThreshold)) {
+			this.log.warn(`Crypto balance of ${from} is above threshold`);
+			throw new Error(`Crypto balance of ${from} is above threshold`);
+		}
+		// check if address is registered in the bridge
+		if (!(await this.usersDepositsService.isClaimedFromETH(from))) {
+			this.log.warn(`${from} is not registered in the bridge`);
+			throw new Error(`${from} is not registered in the bridge`);
+		}
+		// check if free swap was already done
+		if (await this.usersDepositsService.isFreeSwapAlreadyDone(swap.banWallet)) {
+			this.log.warn(`${from} has already done a free swap`);
+			throw new Error(`${from} has already done a free swap`);
+		}
+		// relay swap transaction
+		const sig: Signature = ethers.utils.splitSignature(swap.permit.signature);
+		const gaslessSwap = WBANGaslessSwap__factory.connect(
+			config.WBANGaslessSwapAddress,
+			this.relayerSigner
+		);
+		this.log.debug(`Gasless swap for ${swap.banWallet}/${from} for ${swap.permit.amount} wBAN with deadline ${swap.permit.deadline.toString()}...`);
+		const tx: any = await gaslessSwap.swapWBANToCrypto(
+			from,
+			ethers.utils.parseEther(swap.permit.amount),
+			BigNumber.from(swap.permit.deadline),
+			sig.v,
+			sig.r,
+			sig.s,
+			swap.swapCallData,
+			{ gasLimit: swap.gasLimit + 300_000 }
+		);
+		const relayedTx = await this.waitForRelayedTx(tx.transactionId);
+		// store free swap request
+		await this.usersDepositsService.storeFreeSwap(swap.banWallet, tx.transactionId);
+		return {
+			txnId: tx.transactionId,
+			txnHash: relayedTx.hash,
+		};
+	}
+
 	checkSignature(
 		blockchainWallet: string,
 		signature: string,
@@ -399,6 +556,26 @@ class Service {
 			);
 		}
 		return author === sanitizedAddress;
+	}
+
+	private async waitForRelayedTx(txId: string): Promise<RelayerTransaction> {
+		if (!config.BlockchainRelayerEnabled || !this.relayer || !this.relayerSigner) {
+			throw new Error("Relayer is turned off");
+		}
+		await this.sleep(500);
+		let tx = await this.relayer.query(txId);
+		// poll the transaction status 'til it's either a succesfull or failed tx
+		while (tx.status !== 'mined' && tx.status !== 'confirmed' && tx.status !== 'failed') {
+			this.log.debug(`Waiting for relayed transaction ${txId} (tx hash: ${tx.hash}) to be confirmed...`);
+			await this.sleep(500);
+			tx = await this.relayer.query(txId);
+		}
+		const txReceipt = await this.relayerSigner.provider.getTransactionReceipt(tx.hash);
+		// throw error if txn failed
+		if (tx.status === 'failed' || txReceipt.status === 0) {
+			throw new Error(`Could not relay swap transaction with ID ${txId} and hash ${tx.hash}`);
+		}
+		return tx;
 	}
 
 	private async eventuallySendBan(

@@ -13,6 +13,7 @@ import config from "../config";
  * - `withdrawals:${ban_address}`: sorted set (by timestamp) of all BAN withdrawals TODO: date vs hash issue
  * - `swaps:ban-to-wban:${ban_address}`: sorted set (by timestamp) of all BAN -> wBAN receipts generated
  * - `swaps:wban-to-ban:${blockchain_address}`: sorted set (by timestamp) of all wBAN -> BAN transactions hash
+ * - `swaps:gasless`: map whose key is the BAN address and whose value is the relayed txn id
  * - `audit:${hash|receipt}`: map of all the data associated to the event (deposit/withdrawal/swap)
  * - `claims:pending:${ban_address}:${blockchain_address}`: value of 1 means a pending claim -- expires after 5 minutes (TTL)
  * - `claims:${ban_address}:${blockchain_address}`: value of 1 means a valid claim
@@ -121,6 +122,13 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			`Checked if there is a claim for ${banAddress.toLowerCase()}: ${exists}`
 		);
 		return exists;
+	}
+
+	async isClaimedFromETH(blockchainAddress: string): Promise<boolean> {
+		const claims = await this.redis.keys(
+			`claims:*:${blockchainAddress.toLowerCase()}`
+		);
+		return claims.length > 0;
 	}
 
 	async hasClaim(
@@ -474,6 +482,18 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 				return results;
 			})
 		);
+	}
+
+	async isFreeSwapAlreadyDone(from: string): Promise<boolean> {
+		const txnId: string | null = await this.redis.get(
+			`swaps:gasless:${from.toLowerCase()}`
+		);
+		return txnId !== null;
+	}
+
+	async storeFreeSwap(from: string, txnId: string): Promise<void> {
+		await this.redis.set(`swaps:gasless:${from.toLowerCase()}`, txnId);
+		this.log.info(`Stored gasless swap from ${from.toLowerCase()}`);
 	}
 }
 

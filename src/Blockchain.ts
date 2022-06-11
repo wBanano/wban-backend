@@ -193,6 +193,10 @@ class Blockchain {
 		}
 	}
 
+	async getWalletBalance(): Promise<BigNumber> {
+		return this.wallet.getBalance('latest')
+	}
+
 	private async handleSwapToBanEvents(swap: SwapWBANToBan): Promise<void> {
 		this.log.debug(
 			`Detected a SwapToBan event. From: ${swap.blockchainWallet}, to: ${swap.banWallet}, amount: ${swap.amount}, hash: ${swap.hash}`
