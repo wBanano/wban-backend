@@ -1,5 +1,5 @@
 import { Logger } from "tslog";
-import IORedis from "ioredis";
+import IORedis, { Redis } from "ioredis";
 import Redlock from "redlock";
 import { BigNumber, ethers } from "ethers";
 import { UsersDepositsStorage } from "./UsersDepositsStorage";
@@ -18,7 +18,7 @@ import config from "../config";
  * - `claims:${ban_address}:${blockchain_address}`: value of 1 means a valid claim
  */
 class RedisUsersDepositsStorage implements UsersDepositsStorage {
-	private redis: IORedis.Redis;
+	private redis: Redis;
 
 	private redlock: Redlock;
 
@@ -45,19 +45,21 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	}
 
 	async getUserAvailableBalance(from: string): Promise<BigNumber> {
-		return this.redlock
-			.lock(`locks:ban-balance:${from}`, 1_000)
-			.then(async (lock) => {
-				const rawAmount: string | null = await this.redis.get(
-					`ban-balance:${from.toLowerCase()}`
-				);
-				if (rawAmount === null) {
-					return BigNumber.from(0);
-				}
-				// unlock resource when done
-				await lock.unlock().catch((err) => this.log.error(err));
-				return BigNumber.from(rawAmount);
-			});
+		const lock = await this.redlock.acquire(
+			[`locks:ban-balance:${from}`],
+			1_000
+		);
+		try {
+			const rawAmount: string | null = await this.redis.get(
+				`ban-balance:${from.toLowerCase()}`
+			);
+			if (rawAmount === null) {
+				return BigNumber.from(0);
+			}
+			return BigNumber.from(rawAmount);
+		} finally {
+			await lock.release();
+		}
 	}
 
 	/*
@@ -155,46 +157,43 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		this.log.info(
 			`Storing user deposit from: ${banAddress}, amount: ${amount} BAN, hash: ${hash}`
 		);
-		this.redlock
-			.lock(`locks:ban-balance:${banAddress}`, 30_000)
-			.then(async (lock) => {
-				let rawBalance: string | null;
-				try {
-					rawBalance = await this.redis.get(`ban-balance:${banAddress}`);
-					let balance: BigNumber;
-					if (rawBalance) {
-						balance = BigNumber.from(rawBalance);
-					} else {
-						balance = BigNumber.from(0);
-					}
-					balance = balance.add(amount);
+		const lock = await this.redlock.acquire(
+			[`locks:ban-balance:${banAddress}`],
+			30_000
+		);
+		try {
+			const rawBalance: string | null = await this.redis.get(
+				`ban-balance:${banAddress}`
+			);
+			let balance: BigNumber;
+			if (rawBalance) {
+				balance = BigNumber.from(rawBalance);
+			} else {
+				balance = BigNumber.from(0);
+			}
+			balance = balance.add(amount);
 
-					await this.redis
-						.multi()
-						.set(`ban-balance:${banAddress}`, balance.toString())
-						.zadd(`deposits:${banAddress}`, timestamp, hash)
-						.hset(`audit:${hash}`, { type: "deposit", hash, amount, timestamp })
-						.exec();
-					this.log.info(
-						`Stored user deposit from: ${banAddress}, amount: ${ethers.utils.formatEther(
-							amount
-						)} BAN, hash: ${hash}`
-					);
-				} catch (err) {
-					this.log.error(err);
-				}
-
-				// unlock resource when done
-				return lock.unlock().catch((err) => this.log.error(err));
-			})
-			.catch((err) => {
-				this.log.error(
-					`Couldn't store user deposit from: ${banAddress}, amount: ${ethers.utils.formatEther(
-						amount
-					)} BAN, hash: ${hash}`
-				);
-				throw err;
-			});
+			await this.redis
+				.multi()
+				.set(`ban-balance:${banAddress}`, balance.toString())
+				.zadd(`deposits:${banAddress}`, timestamp, hash)
+				.hset(`audit:${hash}`, { type: "deposit", hash, amount, timestamp })
+				.exec();
+			this.log.info(
+				`Stored user deposit from: ${banAddress}, amount: ${ethers.utils.formatEther(
+					amount
+				)} BAN, hash: ${hash}`
+			);
+		} catch (err) {
+			this.log.error(
+				`Couldn't store user deposit from: ${banAddress}, amount: ${ethers.utils.formatEther(
+					amount
+				)} BAN, hash: ${hash}`
+			);
+			throw err;
+		} finally {
+			await lock.release();
+		}
 	}
 
 	async containsUserDepositTransaction(
@@ -223,45 +222,41 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 				amount
 			)} BAN, hash: ${hash}`
 		);
-		this.redlock
-			.lock(`locks:ban-balance:${banAddress}`, 1_000)
-			.then(async (lock) => {
-				let rawBalance: string | null;
-				try {
-					rawBalance = await this.redis.get(`ban-balance:${banAddress}`);
-					let balance: BigNumber;
-					if (rawBalance) {
-						balance = BigNumber.from(rawBalance);
-					} else {
-						balance = BigNumber.from(0);
-					}
-					balance = balance.sub(amount);
+		const lock = await this.redlock.acquire(
+			[`locks:ban-balance:${banAddress}`],
+			1_000
+		);
+		try {
+			const rawBalance: string | null = await this.redis.get(
+				`ban-balance:${banAddress}`
+			);
+			let balance: BigNumber;
+			if (rawBalance) {
+				balance = BigNumber.from(rawBalance);
+			} else {
+				balance = BigNumber.from(0);
+			}
+			balance = balance.sub(amount);
 
-					await this.redis
-						.multi()
-						.set(`ban-balance:${banAddress}`, balance.toString())
-						.zadd(`withdrawals:${banAddress}`, timestamp, hash)
-						.hset(`audit:${hash}`, {
-							type: "withdrawal",
-							hash,
-							amount,
-							timestamp,
-						})
-						.exec();
-					this.log.info(
-						`Stored user withdrawal from: ${banAddress}, amount: ${ethers.utils.formatEther(
-							amount
-						)} BAN`
-					);
-				} catch (err) {
-					this.log.error(err);
-				}
-				// unlock resource when done
-				return lock.unlock().catch((err) => this.log.error(err));
-			})
-			.catch((err) => {
-				throw err;
-			});
+			await this.redis
+				.multi()
+				.set(`ban-balance:${banAddress}`, balance.toString())
+				.zadd(`withdrawals:${banAddress}`, timestamp, hash)
+				.hset(`audit:${hash}`, {
+					type: "withdrawal",
+					hash,
+					amount,
+					timestamp,
+				})
+				.exec();
+			this.log.info(
+				`Stored user withdrawal from: ${banAddress}, amount: ${ethers.utils.formatEther(
+					amount
+				)} BAN`
+			);
+		} finally {
+			lock.release();
+		}
 	}
 
 	async containsUserWithdrawalRequest(
@@ -296,107 +291,91 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 				amount
 			)} BAN for user ${banAddress}`
 		);
-		await this.redlock
-			.lock(`locks:swaps:ban-to-wban:${banAddress}`, 1_000)
-			.then(async (lock: Redlock.Lock) => {
-				try {
-					const balance = (await this.getUserAvailableBalance(banAddress)).sub(
-						amount
-					);
-					await this.redis
-						.multi()
-						.set(`ban-balance:${banAddress}`, balance.toString())
-						.zadd(`swaps:ban-to-wban:${banAddress}`, timestamp, receipt)
-						.hset(`audit:${receipt}`, {
-							type: "swap-to-wban",
-							blockchainAddress: _blockchainAddress.toLowerCase(),
-							receipt,
-							uuid,
-							amount,
-							timestamp,
-						})
-						.exec();
-					this.log.info(
-						`Stored user swap from: ${banAddress}, amount: ${ethers.utils.formatEther(
-							amount
-						)} BAN, receipt: ${receipt}`
-					);
-				} catch (err) {
-					this.log.error(err);
-				}
-
-				// unlock resource when done
-				return lock.unlock().catch((err) => this.log.error(err));
-			})
-			.catch((err) => {
-				throw err;
-			});
+		const lock = await this.redlock.acquire(
+			[`locks:swaps:ban-to-wban:${banAddress}`],
+			1_000
+		);
+		try {
+			const balance = (await this.getUserAvailableBalance(banAddress)).sub(
+				amount
+			);
+			await this.redis
+				.multi()
+				.set(`ban-balance:${banAddress}`, balance.toString())
+				.zadd(`swaps:ban-to-wban:${banAddress}`, timestamp, receipt)
+				.hset(`audit:${receipt}`, {
+					type: "swap-to-wban",
+					blockchainAddress: _blockchainAddress.toLowerCase(),
+					receipt,
+					uuid,
+					amount,
+					timestamp,
+				})
+				.exec();
+			this.log.info(
+				`Stored user swap from: ${banAddress}, amount: ${ethers.utils.formatEther(
+					amount
+				)} BAN, receipt: ${receipt}`
+			);
+		} finally {
+			lock.release();
+		}
 	}
 
 	async storeUserSwapToBan(swap: SwapWBANToBan): Promise<void> {
 		if (!swap.banWallet) {
 			throw new Error("Missing BAN address");
 		}
-		this.redlock
-			.lock(`locks:ban-balance:${swap.banWallet}`, 1_000)
-			.then(async (lock) => {
-				// check "again" if the txn wasn't already processed
-				if (await this.swapToBanWasAlreadyDone(swap)) {
-					this.log.warn(
-						`Swap for transaction "${swap.hash}" was already done.`
-					);
+		const lock = await this.redlock.acquire(
+			[`locks:ban-balance:${swap.banWallet}`],
+			1_000
+		);
+		try {
+			// check "again" if the txn wasn't already processed
+			if (await this.swapToBanWasAlreadyDone(swap)) {
+				this.log.warn(`Swap for transaction "${swap.hash}" was already done.`);
+			} else {
+				const rawBalance: string | null = await this.redis.get(
+					`ban-balance:${swap.banWallet.toLowerCase()}`
+				);
+				let balance: BigNumber;
+				if (rawBalance) {
+					balance = BigNumber.from(rawBalance);
 				} else {
-					let rawBalance: string | null;
-					try {
-						rawBalance = await this.redis.get(
-							`ban-balance:${swap.banWallet.toLowerCase()}`
-						);
-						let balance: BigNumber;
-						if (rawBalance) {
-							balance = BigNumber.from(rawBalance);
-						} else {
-							balance = BigNumber.from(0);
-						}
-						balance = balance.add(ethers.utils.parseEther(swap.amount));
-
-						await this.redis
-							.multi()
-							.set(
-								`ban-balance:${swap.banWallet.toLowerCase()}`,
-								balance.toString()
-							)
-							.zadd(
-								`swaps:wban-to-ban:${swap.blockchainWallet.toLowerCase()}`,
-								swap.timestamp * 1_000,
-								swap.hash
-							)
-							.hset(`audit:${swap.hash}`, {
-								type: "swap-to-ban",
-								hash: swap.hash,
-								banAddress: swap.banWallet.toLowerCase(),
-								amount: ethers.utils.parseEther(swap.amount).toString(),
-								timestamp: swap.timestamp * 1_000,
-							})
-							.exec();
-						this.log.info(
-							`Stored user swap from wBAN of ${
-								swap.amount
-							} BAN from ${swap.blockchainWallet.toLowerCase()} to ${swap.banWallet.toLowerCase()} with hash: ${
-								swap.hash
-							}`
-						);
-					} catch (err) {
-						this.log.error(err);
-					}
+					balance = BigNumber.from(0);
 				}
-				// unlock resource when done
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				return lock.unlock().catch((err: any) => this.log.error(err));
-			})
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			.catch((err: any) => {
-				throw err;
-			});
+				balance = balance.add(ethers.utils.parseEther(swap.amount));
+
+				await this.redis
+					.multi()
+					.set(
+						`ban-balance:${swap.banWallet.toLowerCase()}`,
+						balance.toString()
+					)
+					.zadd(
+						`swaps:wban-to-ban:${swap.blockchainWallet.toLowerCase()}`,
+						swap.timestamp * 1_000,
+						swap.hash
+					)
+					.hset(`audit:${swap.hash}`, {
+						type: "swap-to-ban",
+						hash: swap.hash,
+						banAddress: swap.banWallet.toLowerCase(),
+						amount: ethers.utils.parseEther(swap.amount).toString(),
+						timestamp: swap.timestamp * 1_000,
+					})
+					.exec();
+				this.log.info(
+					`Stored user swap from wBAN of ${
+						swap.amount
+					} BAN from ${swap.blockchainWallet.toLowerCase()} to ${swap.banWallet.toLowerCase()} with hash: ${
+						swap.hash
+					}`
+				);
+			}
+		} finally {
+			lock.release();
+		}
 	}
 
 	async swapToBanWasAlreadyDone(swap: SwapWBANToBan): Promise<boolean> {

@@ -7,7 +7,6 @@ import { Banano } from "../src/Banano";
 import { BigNumber, ethers } from "ethers";
 import ProcessingQueue from "../src/services/queuing/ProcessingQueue";
 import config from "../src/config";
-import { LockError } from "redlock";
 
 const { expect } = chai;
 
@@ -94,7 +93,7 @@ describe("Banano Service", () => {
 			depositsService.isClaimed.withArgs(sender).resolves(true);
 			depositsService.storeUserDeposit
 				.withArgs(sender, amount, timestamp, hash)
-				.throws(new LockError("Exceeded 10 attempts to lock the resource"));
+				.throws(new Error("Exceeded 10 attempts to lock the resource"));
 
 			svc.receiveTransaction.resolves();
 			svc.getTotalBalance
@@ -107,7 +106,7 @@ describe("Banano Service", () => {
 			expect(
 				svc.processUserDeposit(sender, amount, timestamp, hash)
 			).to.be.rejectedWith(
-				new LockError("Exceeded 10 attempts to lock the resource")
+				new Error("Exceeded 10 attempts to lock the resource")
 			);
 		});
 

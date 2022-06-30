@@ -23,7 +23,6 @@ class RedisBlockchainScanQueue implements BlockchainScanQueue {
 				host: config.RedisHost,
 			},
 			defaultJobOptions: {
-				timeout: 30_000,
 				attempts: 3,
 				backoff: {
 					type: "exponential",
