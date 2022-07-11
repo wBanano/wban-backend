@@ -531,7 +531,7 @@ class Service {
 			sig.r,
 			sig.s,
 			swap.swapCallData,
-			{ gasLimit: swap.gasLimit + 300_000 }
+			{ gasLimit: swap.gasLimit + 400_000 }
 		);
 		const relayedTx = await this.waitForRelayedTx(tx.transactionId);
 		// store free swap request
