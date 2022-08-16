@@ -53,6 +53,10 @@ export default {
 		process.env.BC_WALLET_MMENOMIC_SIGNER_INDEX ?? 0,
 	BlockchainWalletPendingTransactionsThreadEnabled:
 		process.env.BC_PENDING_TXN_THREAD ?? true,
+	BlockchainWalletBlockRangeMax: Number.parseInt(
+		process.env.BC_BLOCK_RANGE_MAX ?? "3000",
+		10
+	),
 	BlockchainWalletPendingTransactionsStartFromBlock: Number.parseInt(
 		process.env.BC_PENDING_BLOCKS_START ?? "0",
 		10
@@ -64,7 +68,7 @@ export default {
 		process.env.BC_GASLESS_BAN_THRESHOLD ?? 1000,
 	BlockchainGasLessCryptoBalanceThreshold:
 		process.env.BC_GASLESS_CRYPTO_THRESHOLD ?? 1,
-	BlockchainRelayerEnabled: process.env.BC_RELAYER_ENABLED === 'true',
+	BlockchainRelayerEnabled: process.env.BC_RELAYER_ENABLED === "true",
 	BlockchainRelayerApiKey: process.env.BC_RELAYER_API_KEY ?? "",
 	BlockchainRelayerSecretKey: process.env.BC_RELAYER_SECRET_KEY ?? "",
 

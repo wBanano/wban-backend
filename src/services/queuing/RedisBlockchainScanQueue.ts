@@ -46,13 +46,17 @@ class RedisBlockchainScanQueue implements BlockchainScanQueue {
 			}
 		);
 		this.worker.registerProcessorForJobNamed("bc-scan-repeat", async () => {
-			const latestBlockProcessed: number = await usersDepositsService.getLastBlockchainBlockProcessed();
+			const latestBlockProcessed: number =
+				await usersDepositsService.getLastBlockchainBlockProcessed();
 			const currentBlock: number = await provider.getBlockNumber();
 			this.queue.add(
 				"bc-scan",
 				{
 					blockFrom: latestBlockProcessed + 1,
-					blockTo: Math.min(latestBlockProcessed + 10_000, currentBlock),
+					blockTo: Math.min(
+						latestBlockProcessed + config.BlockchainWalletBlockRangeMax,
+						currentBlock
+					),
 				},
 				{
 					jobId: `${latestBlockProcessed + 1}-${currentBlock}`,
