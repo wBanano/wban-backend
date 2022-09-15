@@ -242,19 +242,14 @@ app.get("/history/:blockchain/:ban", async (req: Request, res: Response) => {
 });
 
 app.get("/prices", async (req: Request, res: Response) => {
-	const [
-		banPrice,
-		bnbPrice,
-		ethPrice,
-		maticPrice,
-		ftmPrice,
-	] = await Promise.all([
-		new CoinExPricer("BANUSDT").getPriceInUSD(),
-		new CoinExPricer("BNBUSDC").getPriceInUSD(),
-		new CoinExPricer("ETHUSDC").getPriceInUSD(),
-		new CoinExPricer("MATICUSDC").getPriceInUSD(),
-		new CoinExPricer("FTMUSDC").getPriceInUSD(),
-	]);
+	const [banPrice, bnbPrice, ethPrice, maticPrice, ftmPrice] =
+		await Promise.all([
+			new CoinExPricer("BANUSDT").getPriceInUSD(),
+			new CoinExPricer("BNBUSDC").getPriceInUSD(),
+			new CoinExPricer("ETHUSDC").getPriceInUSD(),
+			new CoinExPricer("MATICUSDC").getPriceInUSD(),
+			new CoinExPricer("FTMUSDC").getPriceInUSD(),
+		]);
 	res.send({
 		ban: banPrice,
 		bnb: bnbPrice,
@@ -277,12 +272,15 @@ app.get("/gasless/settings", async (req: Request, res: Response) => {
 		enabled: config.BlockchainRelayerEnabled,
 		banThreshold: config.BlockchainGasLessBananoThreshold,
 		cryptoThreshold: config.BlockchainGasLessCryptoBalanceThreshold,
+		swapContract: config.WBANGaslessSwapAddress,
 	});
 });
 
 app.get("/gasless/settings/:ban", async (req: Request, res: Response) => {
 	const banWallet = req.params.ban;
-	const freeSwapDone = await usersDepositsService.isFreeSwapAlreadyDone(banWallet);
+	const freeSwapDone = await usersDepositsService.isFreeSwapAlreadyDone(
+		banWallet
+	);
 	res.type("json").send({
 		gaslessSwapAllowed: !freeSwapDone,
 	});
