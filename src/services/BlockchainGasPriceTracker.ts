@@ -1,23 +1,7 @@
-import { AxiosInstance } from "axios";
-import { setup } from "axios-cache-adapter";
-import { Logger } from "tslog";
-import config from "../config";
+import { BigNumber } from "ethers";
 
-class BlockchainGasPriceTracker {
-	private api: AxiosInstance;
-
-	constructor() {
-		this.api = setup({
-			cache: {
-				maxAge: 5 * 1000, // cache for 5 seconds
-			},
-		});
-	}
-
-	public async getGasPriceTrackerData(): Promise<string> {
-		const resp = await this.api.get(`${config.BlockchainGasPriceTrackerApi}`);
-		return resp.data.result;
-	}
+interface BlockchainGasPriceTracker {
+	getGasPriceTrackerData(): Promise<BigNumber>;
 }
 
 export { BlockchainGasPriceTracker };

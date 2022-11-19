@@ -1,11 +1,13 @@
 import express, { Application, Request, Response } from "express";
 import cors from "cors";
 import { Logger } from "tslog";
-import { ethers } from "ethers";
+import { BigNumber, ethers } from "ethers";
 import SSEManager from "./services/sse/SSEManager";
 import { Service } from "./services/Service";
 import { TokensList } from "./services/TokensList";
 import { BlockchainGasPriceTracker } from "./services/BlockchainGasPriceTracker";
+import { OwlracleGasPriceTracker } from "./services/OwlracleGasPriceTracker";
+import { EtherscanGasPriceTracker } from "./services/EtherscanGasPriceTracker";
 import { UsersDepositsStorage } from "./storage/UsersDepositsStorage";
 import { RedisUsersDepositsStorage } from "./storage/RedisUsersDepositsStorage";
 import { UsersDepositsService } from "./services/UsersDepositsService";
@@ -55,7 +57,8 @@ app.use(
 );
 app.use(express.json());
 
-const usersDepositsStorage: UsersDepositsStorage = new RedisUsersDepositsStorage();
+const usersDepositsStorage: UsersDepositsStorage =
+	new RedisUsersDepositsStorage();
 const usersDepositsService: UsersDepositsService = new UsersDepositsService(
 	usersDepositsStorage
 );
@@ -63,7 +66,10 @@ const processingQueue: ProcessingQueue = new RedisProcessingQueue();
 const blockchainScanQueue: BlockchainScanQueue = new RedisBlockchainScanQueue(
 	usersDepositsService
 );
-const gasPriceTracker = new BlockchainGasPriceTracker();
+const gasPriceTracker: BlockchainGasPriceTracker =
+	config.BlockchainGasPriceStrategy === "owlracle"
+		? new OwlracleGasPriceTracker()
+		: new EtherscanGasPriceTracker();
 const tokensList = new TokensList();
 const svc = new Service(
 	usersDepositsService,
@@ -87,7 +93,9 @@ app.get("/health", async (req: Request, res: Response) => {
 
 	// check Banano connectivity by checking balance of an account
 	try {
-		await svc.banano.getBalance('ban_1wban1mwe1ywc7dtknaqdbog5g3ah333acmq8qxo5anibjqe4fqz9x3xz6ky');
+		await svc.banano.getBalance(
+			"ban_1wban1mwe1ywc7dtknaqdbog5g3ah333acmq8qxo5anibjqe4fqz9x3xz6ky"
+		);
 	} catch (e) {
 		log.error("Can't request Banano balance", e);
 		res.status(503).send({
@@ -98,7 +106,9 @@ app.get("/health", async (req: Request, res: Response) => {
 
 	// check connection to Redis node
 	try {
-		usersDepositsStorage.isClaimed('ban_1wban1mwe1ywc7dtknaqdbog5g3ah333acmq8qxo5anibjqe4fqz9x3xz6ky');
+		usersDepositsStorage.isClaimed(
+			"ban_1wban1mwe1ywc7dtknaqdbog5g3ah333acmq8qxo5anibjqe4fqz9x3xz6ky"
+		);
 	} catch (e) {
 		log.error("Can't make Redis query", e);
 		res.status(503).send({
@@ -260,7 +270,12 @@ app.get("/prices", async (req: Request, res: Response) => {
 });
 
 app.get("/blockchain/gas-price", async (req: Request, res: Response) => {
-	res.type("json").send(await gasPriceTracker.getGasPriceTrackerData());
+	try {
+		const gasPrice: BigNumber = await gasPriceTracker.getGasPriceTrackerData();
+		res.type("json").send({ gasPrice: gasPrice.toString() });
+	} catch (err: unknown) {
+		res.type("json").status(503);
+	}
 });
 
 app.get("/dex/tokens", async (req: Request, res: Response) => {
