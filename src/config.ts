@@ -71,6 +71,10 @@ export default {
 		process.env.BC_GASLESS_BAN_THRESHOLD ?? 1000,
 	BlockchainGasLessCryptoBalanceThreshold:
 		process.env.BC_GASLESS_CRYPTO_THRESHOLD ?? 1,
+	BlockchainGasLessGasBuffer: Number.parseInt(
+		process.env.BC_GASLESS_GAS_BUFFER ?? "400000",
+		10
+	),
 	BlockchainRelayerEnabled: process.env.BC_RELAYER_ENABLED === "true",
 	BlockchainRelayerApiKey: process.env.BC_RELAYER_API_KEY ?? "",
 	BlockchainRelayerSecretKey: process.env.BC_RELAYER_SECRET_KEY ?? "",

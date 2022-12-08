@@ -533,7 +533,7 @@ class Service {
 					sig.r,
 					sig.s,
 					swap.swapCallData,
-					{ gasLimit: swap.gasLimit + 400_000 }
+					{ gasLimit: swap.gasLimit + config.BlockchainGasLessGasBuffer }
 				)) as RelayedContractTransaction;
 			const relayedTx = await this.waitForRelayedTx(tx.transactionId);
 			// store free swap request
