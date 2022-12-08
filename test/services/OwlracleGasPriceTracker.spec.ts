@@ -23,5 +23,7 @@ describe("Owlracle gas price tracker", () => {
 		expect(gasPrice.toNumber())
 			.to.be.gte(parseUnits("0.1", "gwei").toNumber())
 			.lte(parseUnits("1", "gwei").toNumber());
+		expect(gasPrice.toString())
+			.to.equal("100000000");
 	});
 });

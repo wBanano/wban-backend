@@ -9,7 +9,8 @@
 		"build": "tsc --project ./",
 		"test": "NODE_ENV=test yarn nyc --reporter=text --reporter=html --check-coverage=true mocha",
 		"lint": "pretty-quick --staged && lint-staged",
-		"audit:fix": "npm_config_yes=true npx yarn-audit-fix"
+		"audit:fix": "npm_config_yes=true npx yarn-audit-fix",
+		"relayer:list": "ts-node src/tools/relayer-list.ts"
 	},
 	"author": "Wrap That Potassium <wrap-that-potassium@protonmail.com>",
 	"license": "MIT",
@@ -76,9 +77,9 @@
 		"*.{ts,js}": "eslint --cache --fix"
 	},
 	"nyc": {
-		"lines": 46,
+		"lines": 47,
 		"functions": 30,
-		"branches": 53,
-		"statements": 46
+		"branches": 52,
+		"statements": 47
 	}
 }

@@ -272,8 +272,10 @@ app.get("/prices", async (req: Request, res: Response) => {
 app.get("/blockchain/gas-price", async (req: Request, res: Response) => {
 	try {
 		const gasPrice: BigNumber = await gasPriceTracker.getGasPriceTrackerData();
+		log.info("Gas price:", ethers.utils.formatUnits(gasPrice, "gwei"), "gwei");
 		res.type("json").send({ gasPrice: gasPrice.toString() });
 	} catch (err: unknown) {
+		log.error("Can't fetch gas price", err);
 		res.type("json").status(503);
 	}
 });

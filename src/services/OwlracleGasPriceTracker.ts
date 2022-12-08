@@ -2,6 +2,7 @@ import { AxiosInstance } from "axios";
 import { setup } from "axios-cache-adapter";
 import { BigNumber } from "ethers";
 import { parseUnits } from "ethers/lib/utils";
+import { Logger } from "tslog";
 import { BlockchainGasPriceTracker } from "./BlockchainGasPriceTracker";
 import config from "../config";
 
@@ -13,6 +14,8 @@ type Speed = {
 
 class OwlracleGasPriceTracker implements BlockchainGasPriceTracker {
 	private api: AxiosInstance;
+
+	private log: Logger = config.Logger.getChildLogger();
 
 	constructor() {
 		this.api = setup({
@@ -28,6 +31,9 @@ class OwlracleGasPriceTracker implements BlockchainGasPriceTracker {
 		const resp = await this.api.get(
 			`https://api.owlracle.info/v3/${chainId}/gas?apikey=${apiKey}&eip1559=false&accept=90`
 		);
+		this.log.debug("Owlracle status code:", resp.status);
+		this.log.debug("Owlracle status message:", resp.statusText);
+		this.log.debug("Owlracle data:", resp.data);
 		const { speeds } = resp.data;
 		const safeSpeed: Speed | undefined = speeds.find(
 			(speed: Speed) => speed.acceptance > 0.9
