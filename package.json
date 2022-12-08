@@ -1,6 +1,6 @@
 {
 	"name": "wban-backend",
-	"version": "1.5.0",
+	"version": "1.5.1",
 	"description": "wBAN backend for swaps",
 	"main": "dist/app.js",
 	"scripts": {
@@ -77,9 +77,9 @@
 		"*.{ts,js}": "eslint --cache --fix"
 	},
 	"nyc": {
-		"lines": 47,
+		"lines": 46,
 		"functions": 30,
 		"branches": 52,
-		"statements": 47
+		"statements": 46
 	}
 }
