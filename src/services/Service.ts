@@ -221,6 +221,14 @@ class Service {
 		return ClaimResponse.InvalidOwner;
 	}
 
+	async getBanAddressesForBlockchainAddress(
+		blockchainAddress: string
+	): Promise<Array<string>> {
+		return this.usersDepositsService.getBanAddressesForBlockchainAddress(
+			blockchainAddress
+		);
+	}
+
 	async withdrawBAN(
 		banWallet: string,
 		amount: string,

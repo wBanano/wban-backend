@@ -14,5 +14,5 @@
 	},
 	"lib": ["es2018"],
 	"include": ["./src/**.ts"],
-	"exclude": ["node_modules", "typings", "**/*.spec.ts"]
+	"exclude": ["node_modules", "typings", "**/*.spec.ts"],
 }

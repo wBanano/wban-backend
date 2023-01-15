@@ -2,6 +2,8 @@ import express, { Application, Request, Response } from "express";
 import cors from "cors";
 import { Logger } from "tslog";
 import { BigNumber, ethers } from "ethers";
+import Session from "express-session";
+import { generateNonce, ErrorTypes, SiweMessage } from "siwe";
 import SSEManager from "./services/sse/SSEManager";
 import { Service } from "./services/Service";
 import { TokensList } from "./services/TokensList";
@@ -46,6 +48,9 @@ app.use(
 		origin(origin, callback) {
 			// allow requests with no origin
 			if (!origin) return callback(null, true);
+			if (origin.endsWith("ngrok.io")) {
+				return callback(null, true);
+			}
 			if (corsWhitelist.indexOf(origin) === -1) {
 				const message =
 					"The CORS policy for this origin doesn't allow access from the particular origin.";
@@ -53,9 +58,20 @@ app.use(
 			}
 			return callback(null, true);
 		},
+		credentials: true,
 	})
 );
 app.use(express.json());
+app.set("trust proxy", 1); // trust first proxy;
+app.use(
+	Session({
+		name: "wBAN",
+		secret: config.SiweSessionSecret,
+		resave: true,
+		saveUninitialized: true,
+		cookie: { secure: true, sameSite: "none", httpOnly: true },
+	})
+);
 
 const usersDepositsStorage: UsersDepositsStorage =
 	new RedisUsersDepositsStorage();
@@ -311,6 +327,65 @@ app.post("/gasless/swap/:ban", async (req: Request, res: Response) => {
 		res.status(200).send();
 	} catch (err: unknown) {
 		res.status(500).send(err);
+	}
+});
+
+app.get("/relink", async (req: Request, res: Response) => {
+	if (!req.session.siwe) {
+		res.status(401).json({ message: "You have to first sign_in" });
+		return;
+	}
+	log.debug("User is authenticated!");
+	const blockchainAddress = req.session.siwe.address;
+	const banAddresses: Array<string> =
+		await svc.getBanAddressesForBlockchainAddress(blockchainAddress);
+	res.status(200).send({ banAddresses });
+});
+
+app.get("/nonce", async (req: Request, res: Response) => {
+	req.session.nonce = generateNonce();
+	res.setHeader("Content-Type", "text/plain");
+	res.status(200).send(req.session.nonce);
+});
+
+app.post("/verify", async (req: Request, res: Response) => {
+	try {
+		if (!req.body.message) {
+			res
+				.status(422)
+				.json({ message: "Expected prepareMessage object as body." });
+			return;
+		}
+
+		const message = new SiweMessage(req.body.message);
+		const fields = await message.validate(req.body.signature);
+		if (fields.nonce !== req.session.nonce) {
+			res.status(422).json({ message: "Invalid nonce." });
+			return;
+		}
+		req.session.siwe = fields;
+		req.session.cookie.expires = new Date(
+			fields.expirationTime ?? Date.now() + 10 * 60 * 1_000
+		);
+		req.session.save(() => res.status(200).end());
+	} catch (e: any) {
+		req.session.siwe = null;
+		req.session.nonce = null;
+		log.error(e);
+		switch (e) {
+			case ErrorTypes.EXPIRED_MESSAGE: {
+				req.session.save(() => res.status(440).json({ message: e.message }));
+				break;
+			}
+			case ErrorTypes.INVALID_SIGNATURE: {
+				req.session.save(() => res.status(422).json({ message: e.message }));
+				break;
+			}
+			default: {
+				req.session.save(() => res.status(500).json({ message: e.message }));
+				break;
+			}
+		}
 	}
 });
 

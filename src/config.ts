@@ -84,5 +84,7 @@ export default {
 
 	RedisHost: process.env.REDIS_HOST ?? "",
 
+	SiweSessionSecret: process.env.SIWE_SESSION_SECRET ?? "",
+
 	Logger: log,
 };

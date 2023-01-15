@@ -18,6 +18,9 @@ interface UsersDepositsStorage {
 	isClaimedFromETH(blockchainAddress: string): Promise<boolean>;
 	hasClaim(banAddress: string, blockchainAddress: string): Promise<boolean>;
 	confirmClaim(banAddress: string): Promise<boolean>;
+	getBanAddressesForBlockchainAddress(
+		blockchainAddress: string
+	): Promise<Array<string>>;
 
 	storeUserDeposit(
 		banAddress: string,

@@ -57,6 +57,14 @@ class UsersDepositsService {
 		return this.usersDepositsStorage.confirmClaim(banAddress);
 	}
 
+	async getBanAddressesForBlockchainAddress(
+		blockchainAddress: string
+	): Promise<Array<string>> {
+		return this.usersDepositsStorage.getBanAddressesForBlockchainAddress(
+			blockchainAddress
+		);
+	}
+
 	async storeUserDeposit(
 		banAddress: string,
 		amount: BigNumber,

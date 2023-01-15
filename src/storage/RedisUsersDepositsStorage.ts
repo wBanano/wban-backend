@@ -5,6 +5,7 @@ import { BigNumber, ethers } from "ethers";
 import { UsersDepositsStorage } from "./UsersDepositsStorage";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 import config from "../config";
+import { match } from "assert";
 
 /**
  * Redis storage explanations:
@@ -153,6 +154,25 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		await this.redis.set(key, 1);
 		this.log.info(`Stored claim for ${banAddress} with ${key}`);
 		return true;
+	}
+
+	async getBanAddressesForBlockchainAddress(
+		blockchainAddress: string
+	): Promise<Array<string>> {
+		const claims = await this.redis.keys(
+			`claims:*:${blockchainAddress.toLowerCase()}`
+		);
+		const regexp = new RegExp(
+			`claims:(?<banAddress>.*):${blockchainAddress.toLowerCase()}`,
+			"g"
+		);
+		return claims
+			.map((claim) => {
+				const matches = regexp.exec(claim);
+				const banAddress = matches?.groups?.banAddress;
+				return banAddress ?? "";
+			})
+			.filter((banAddress) => banAddress !== "");
 	}
 
 	async storeUserDeposit(
