@@ -273,7 +273,7 @@ app.get("/prices", async (req: Request, res: Response) => {
 			new CoinExPricer("BANUSDT").getPriceInUSD(),
 			new CoinExPricer("BNBUSDC").getPriceInUSD(),
 			new CoinExPricer("ETHUSDC").getPriceInUSD(),
-			new CoinExPricer("MATICUSDC").getPriceInUSD(),
+			new CoinExPricer("POLUSDC").getPriceInUSD(),
 			new CoinExPricer("FTMUSDC").getPriceInUSD(),
 		]);
 	res.send({
