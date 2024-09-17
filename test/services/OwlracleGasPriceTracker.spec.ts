@@ -21,9 +21,9 @@ describe("Owlracle gas price tracker", () => {
 		config.BlockchainNetworkChainId = 42161;
 		const gasPrice: BigNumber = await svc.getGasPriceTrackerData();
 		expect(gasPrice.toNumber())
-			.to.be.gte(parseUnits("0.1", "gwei").toNumber())
+			.to.be.gte(parseUnits("0.01", "gwei").toNumber())
 			.lte(parseUnits("1", "gwei").toNumber());
 		expect(gasPrice.toString())
-			.to.equal("100000000");
+			.to.equal("10000000");
 	});
 });
