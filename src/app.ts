@@ -270,11 +270,11 @@ app.get("/history/:blockchain/:ban", async (req: Request, res: Response) => {
 app.get("/prices", async (req: Request, res: Response) => {
 	const [banPrice, bnbPrice, ethPrice, maticPrice, ftmPrice] =
 		await Promise.all([
-			new CoinExPricer("BANUSDT").getPriceInUSD(),
+			new CoinExPricer("BANANOUSDT").getPriceInUSD(),
 			new CoinExPricer("BNBUSDC").getPriceInUSD(),
 			new CoinExPricer("ETHUSDC").getPriceInUSD(),
 			new CoinExPricer("POLUSDC").getPriceInUSD(),
-			new CoinExPricer("FTMUSDC").getPriceInUSD(),
+			new CoinExPricer("SUSDC").getPriceInUSD(),
 		]);
 	res.send({
 		ban: banPrice,
