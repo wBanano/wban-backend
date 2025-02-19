@@ -21,6 +21,9 @@ class CoinExPricer implements TokenPricer {
 			url: `https://api.coinex.com/v1/market/ticker?market=${this.market}`,
 		});
 		const apiResponse = resp.data;
+		if (!apiResponse?.data?.ticker?.last) {
+			throw new Error("CoinEx API response does not contain last price");
+		}
 		return Number.parseFloat(apiResponse.data.ticker.last);
 	}
 }
