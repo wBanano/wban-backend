@@ -9,6 +9,7 @@ import SwapWBANToBan from "./models/operations/SwapWBANToBan";
 import { SwapToBanEventListener } from "./models/listeners/SwapToBanEventListener";
 import { UsersDepositsService } from "./services/UsersDepositsService";
 import config from "./config";
+import createBlockchainProvider from "./BlockchainProvider";
 import BlockchainScanQueue from "./services/queuing/BlockchainScanQueue";
 
 class Blockchain {
@@ -16,7 +17,7 @@ class Blockchain {
 
 	private wallet!: Wallet;
 
-	private provider!: ethers.providers.JsonRpcProvider;
+	private provider!: ethers.providers.BaseProvider;
 
 	private listeners: SwapToBanEventListener[] = [];
 
@@ -34,13 +35,7 @@ class Blockchain {
 			return;
 		}
 		try {
-			this.provider = new ethers.providers.JsonRpcProvider(
-				config.BlockchainJsonRpc,
-				{
-					name: config.BlockchainNetworkName,
-					chainId: config.BlockchainNetworkChainId,
-				}
-			);
+			this.provider = createBlockchainProvider();
 			this.wallet = Wallet.fromMnemonic(
 				config.BlockchainWalletMnemonic,
 				`m/44'/60'/0'/0/${config.BlockchainWalletMnemonicSignerIndex}`
@@ -194,7 +189,7 @@ class Blockchain {
 	}
 
 	async getWalletBalance(): Promise<BigNumber> {
-		return this.wallet.getBalance('latest')
+		return this.wallet.getBalance("latest");
 	}
 
 	private async handleSwapToBanEvents(swap: SwapWBANToBan): Promise<void> {
