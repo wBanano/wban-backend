@@ -1,7 +1,7 @@
 import { Queue, Processor, QueueScheduler, Job } from "bullmq";
 import { Logger } from "tslog";
-import { ethers } from "ethers";
 import BlockchainScanQueue from "./BlockchainScanQueue";
+import createBlockchainProvider from "../../BlockchainProvider";
 import ProcessingQueueWorker from "./ProcessingQueueWorker";
 import config from "../../config";
 import { UsersDepositsService } from "../UsersDepositsService";
@@ -38,13 +38,7 @@ class RedisBlockchainScanQueue implements BlockchainScanQueue {
 			},
 		});
 		this.worker = new ProcessingQueueWorker(QUEUE_NAME);
-		const provider = new ethers.providers.JsonRpcProvider(
-			config.BlockchainJsonRpc,
-			{
-				name: config.BlockchainNetworkName,
-				chainId: config.BlockchainNetworkChainId,
-			}
-		);
+		const provider = createBlockchainProvider();
 		this.worker.registerProcessorForJobNamed("bc-scan-repeat", async () => {
 			const latestBlockProcessed: number =
 				await usersDepositsService.getLastBlockchainBlockProcessed();
