@@ -21,6 +21,7 @@ class RedisBlockchainScanQueue implements BlockchainScanQueue {
 		this.queue = new Queue(QUEUE_NAME, {
 			connection: {
 				host: config.RedisHost,
+				password: config.RedisPassword,
 			},
 			defaultJobOptions: {
 				attempts: 3,
@@ -35,6 +36,7 @@ class RedisBlockchainScanQueue implements BlockchainScanQueue {
 		this.queueScheduler = new QueueScheduler(QUEUE_NAME, {
 			connection: {
 				host: config.RedisHost,
+				password: config.RedisPassword,
 			},
 		});
 		this.worker = new ProcessingQueueWorker(QUEUE_NAME);

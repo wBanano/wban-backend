@@ -13,6 +13,7 @@ class ProcessingQueueWorker extends Worker<any, any, string> {
 			concurrency,
 			connection: {
 				host: config.RedisHost,
+				password: config.RedisPassword,
 			},
 		});
 		this.processors = new Map();

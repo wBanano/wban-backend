@@ -83,6 +83,7 @@ export default {
 	WBANGaslessSwapAddress: process.env.WBAN_GASLESS_SWAP_ADDRESS ?? "",
 
 	RedisHost: process.env.REDIS_HOST ?? "",
+	RedisPassword: process.env.REDIS_PASSWORD || undefined,
 
 	SiweSessionSecret: process.env.SIWE_SESSION_SECRET ?? "",
 

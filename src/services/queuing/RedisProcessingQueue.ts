@@ -27,6 +27,7 @@ class RedisProcessingQueue implements ProcessingQueue {
 		this.processingQueue = new Queue(QUEUE_NAME, {
 			connection: {
 				host: config.RedisHost,
+				password: config.RedisPassword,
 			},
 			defaultJobOptions: {
 				attempts: 3,
@@ -41,6 +42,7 @@ class RedisProcessingQueue implements ProcessingQueue {
 		const processingQueueEvents = new QueueEvents(QUEUE_NAME, {
 			connection: {
 				host: config.RedisHost,
+				password: config.RedisPassword,
 			},
 		});
 		this.worker = new ProcessingQueueWorker(QUEUE_NAME);
@@ -52,6 +54,7 @@ class RedisProcessingQueue implements ProcessingQueue {
 		const queueScheduler = new QueueScheduler(QUEUE_NAME, {
 			connection: {
 				host: config.RedisHost,
+				password: config.RedisPassword,
 			},
 		});
 	}

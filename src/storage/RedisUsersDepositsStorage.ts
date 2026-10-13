@@ -29,7 +29,10 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	private static LIMIT = 1000;
 
 	constructor() {
-		this.redis = new IORedis({ host: config.RedisHost });
+		this.redis = new IORedis({
+			host: config.RedisHost,
+			password: config.RedisPassword,
+		});
 		this.redlock = new Redlock([this.redis], {
 			// the expected clock drift; for more details
 			// see http://redis.io/topics/distlock
