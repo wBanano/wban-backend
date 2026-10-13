@@ -565,8 +565,17 @@ class Service {
 		expected: string
 	): boolean {
 		this.log.trace(`Checking signature '${signature}'`);
-		const author = ethers.utils.verifyMessage(expected, signature);
-		const sanitizedAddress = ethers.utils.getAddress(blockchainWallet);
+		let author: string;
+		let sanitizedAddress: string;
+		try {
+			author = ethers.utils.verifyMessage(expected, signature);
+			sanitizedAddress = ethers.utils.getAddress(blockchainWallet);
+		} catch (err: unknown) {
+			this.log.warn(
+				`Malformed signature or address from ${blockchainWallet}: ${err}`
+			);
+			return false;
+		}
 		if (author !== sanitizedAddress) {
 			this.log.warn(
 				`Signature is invalid. ${sanitizedAddress} sent a signed message pretending to be from ${author}`
