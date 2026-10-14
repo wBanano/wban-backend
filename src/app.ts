@@ -26,7 +26,7 @@ import BlockchainScanQueue from "./services/queuing/BlockchainScanQueue";
 import RedisBlockchainScanQueue from "./services/queuing/RedisBlockchainScanQueue";
 import History from "./models/responses/History";
 import GaslessSwap from "./models/operations/GaslessSwap";
-import { CoinExPricer } from "./prices/CoinExPricer";
+import { CoinGeckoPricer } from "./prices/CoinGeckoPricer";
 import KirbyBananoWalletsBlacklist from "./services/KirbyBananoWalletsBlacklist";
 
 const app: Application = express();
@@ -88,6 +88,7 @@ const gasPriceTracker: BlockchainGasPriceTracker =
 		? new OwlracleGasPriceTracker()
 		: new EtherscanGasPriceTracker();
 const tokensList = new TokensList();
+const pricer = new CoinGeckoPricer();
 const svc = new Service(
 	usersDepositsService,
 	processingQueue,
@@ -269,21 +270,7 @@ app.get("/history/:blockchain/:ban", async (req: Request, res: Response) => {
 });
 
 app.get("/prices", async (req: Request, res: Response) => {
-	const [banPrice, bnbPrice, ethPrice, maticPrice, ftmPrice] =
-		await Promise.all([
-			new CoinExPricer("BANANOUSDT").getPriceInUSD(),
-			new CoinExPricer("BNBUSDC").getPriceInUSD(),
-			new CoinExPricer("ETHUSDC").getPriceInUSD(),
-			new CoinExPricer("POLUSDC").getPriceInUSD(),
-			new CoinExPricer("SUSDC").getPriceInUSD(),
-		]);
-	res.send({
-		ban: banPrice,
-		bnb: bnbPrice,
-		eth: ethPrice,
-		matic: maticPrice,
-		ftm: ftmPrice,
-	});
+	res.send(await pricer.getPricesInUSD());
 });
 
 app.get("/blockchain/gas-price", async (req: Request, res: Response) => {
