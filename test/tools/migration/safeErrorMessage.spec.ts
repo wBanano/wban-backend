@@ -42,7 +42,13 @@ describe("Safe error messages", () => {
 		const serverError = logger.makeError(
 			"processing response error",
 			ethers.utils.Logger.errors.SERVER_ERROR,
-			{ error: new Error("Backend unavailable"), requestMethod: "POST", url }
+			{
+				error: Object.assign(new Error("Backend unavailable"), {
+					code: -32001,
+				}),
+				requestMethod: "POST",
+				url,
+			}
 		);
 		expect(safeErrorMessage(serverError)).to.equal(
 			"chain RPC SERVER_ERROR: processing response error, Backend unavailable"

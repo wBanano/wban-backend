@@ -1,7 +1,7 @@
 type ErrorShape = {
 	name?: string;
 	message?: string;
-	code?: string;
+	code?: string | number;
 	errno?: number;
 	severity?: string;
 	reason?: string;
@@ -20,10 +20,11 @@ export default function safeErrorMessage(err: unknown): string {
 		const inner = error.error ? `, ${safeErrorMessage(error.error)}` : "";
 		return `chain RPC ${error.code}: ${error.reason}${inner}`;
 	}
-	if (typeof error.errno === "number" || error.code?.startsWith("E")) {
+	const code = typeof error.code === "string" ? error.code : undefined;
+	if (typeof error.errno === "number" || code?.startsWith("E")) {
 		return `connection failed (${error.code ?? error.name})`;
 	}
-	if (error.severity && !CONSTRAINT_VIOLATION.test(error.code ?? "")) {
+	if (error.severity && !CONSTRAINT_VIOLATION.test(code ?? "")) {
 		return `database error ${error.code}`;
 	}
 	return error.message ?? String(err);
