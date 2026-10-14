@@ -1,4 +1,5 @@
 import chai from "chai";
+import sinon from "sinon";
 import sinonChai from "sinon-chai";
 import { BigNumber } from "ethers";
 import { formatUnits, parseUnits } from "ethers/lib/utils";
@@ -19,11 +20,20 @@ describe("Owlracle gas price tracker", () => {
 
 	it("Checks Arbitrum gas price", async () => {
 		config.BlockchainNetworkChainId = 42161;
+		sinon.stub((svc as any).api, "get").resolves({
+			status: 200,
+			statusText: "OK",
+			data: {
+				speeds: [
+					{ acceptance: 0.35, gasPrice: 0.005 },
+					{ acceptance: 0.95, gasPrice: 0.01 },
+				],
+			},
+		});
 		const gasPrice: BigNumber = await svc.getGasPriceTrackerData();
 		expect(gasPrice.toNumber())
 			.to.be.gte(parseUnits("0.01", "gwei").toNumber())
 			.lte(parseUnits("1", "gwei").toNumber());
-		expect(gasPrice.toString())
-			.to.equal("10000000");
+		expect(gasPrice.toString()).to.equal("10000000");
 	});
 });
