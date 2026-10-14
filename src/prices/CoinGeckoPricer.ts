@@ -12,30 +12,40 @@ const COINGECKO_IDS = {
 
 type Prices = Record<keyof typeof COINGECKO_IDS, number>;
 
-const MAX_AGE_MS = 60 * 1000;
+const MAX_AGE_MS = 5 * 60 * 1000;
+const RETRY_DELAY_MS = 60 * 1000;
 
 class CoinGeckoPricer {
 	private prices: Prices | undefined;
 
 	private fetchedAt = 0;
 
+	private failedAt = 0;
+
 	private log: Logger = config.Logger.getChildLogger();
 
 	async getPricesInUSD(): Promise<Prices> {
-		if (this.prices && Date.now() - this.fetchedAt < MAX_AGE_MS) {
+		const now = Date.now();
+		if (this.prices && now - this.fetchedAt < MAX_AGE_MS) {
 			return this.prices;
 		}
-		this.fetchedAt = Date.now();
+		if (now - this.failedAt < RETRY_DELAY_MS) {
+			return this.lastPrices();
+		}
 		try {
 			this.prices = await CoinGeckoPricer.fetchPrices();
+			this.fetchedAt = now;
 		} catch (err: unknown) {
-			if (!this.prices) {
-				throw err;
-			}
-			this.log.warn(
-				"Can't refresh prices from CoinGecko, serving the last ones",
-				err
-			);
+			this.failedAt = now;
+			this.log.warn("Can't fetch prices from CoinGecko", err);
+			return this.lastPrices();
+		}
+		return this.prices;
+	}
+
+	private lastPrices(): Prices {
+		if (!this.prices) {
+			throw new Error("No prices from CoinGecko yet");
 		}
 		return this.prices;
 	}

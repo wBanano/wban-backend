@@ -42,11 +42,11 @@ describe("CoinGecko pricer", () => {
 		});
 	});
 
-	it("Serves cached prices for a minute", async () => {
+	it("Serves cached prices for five minutes", async () => {
 		get.resolves(response);
 		const pricer = new CoinGeckoPricer();
 		await pricer.getPricesInUSD();
-		clock.tick(59_000);
+		clock.tick(299_000);
 		await pricer.getPricesInUSD();
 		expect(get.callCount).to.equal(1);
 		clock.tick(2_000);
@@ -59,14 +59,27 @@ describe("CoinGecko pricer", () => {
 		get.onSecondCall().rejects(new Error("rate limited"));
 		const pricer = new CoinGeckoPricer();
 		await pricer.getPricesInUSD();
-		clock.tick(61_000);
+		clock.tick(301_000);
 		expect((await pricer.getPricesInUSD()).ban).to.equal(0.0005);
+	});
+
+	it("Waits a minute before retrying after a failure", async () => {
+		get.onFirstCall().rejects(new Error("rate limited"));
+		get.onSecondCall().resolves(response);
+		const pricer = new CoinGeckoPricer();
+		await expect(pricer.getPricesInUSD()).to.be.rejected;
+		clock.tick(59_000);
+		await expect(pricer.getPricesInUSD()).to.be.rejected;
+		expect(get.callCount).to.equal(1);
+		clock.tick(2_000);
+		expect((await pricer.getPricesInUSD()).ban).to.equal(0.0005);
+		expect(get.callCount).to.equal(2);
 	});
 
 	it("Fails without prices to fall back on", async () => {
 		get.resolves({ data: { banano: { usd: 0.0005 } } });
 		await expect(new CoinGeckoPricer().getPricesInUSD()).to.be.rejectedWith(
-			"no USD price for binancecoin"
+			"No prices from CoinGecko yet"
 		);
 	});
 });
