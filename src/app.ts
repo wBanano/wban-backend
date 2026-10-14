@@ -1,4 +1,5 @@
-import express, { Application, Request, Response } from "express";
+import express, { Application, NextFunction, Request, Response } from "express";
+import "express-async-errors";
 import cors from "cors";
 import { Logger } from "tslog";
 import { BigNumber, ethers } from "ethers";
@@ -292,7 +293,7 @@ app.get("/blockchain/gas-price", async (req: Request, res: Response) => {
 		res.type("json").send({ gasPrice: gasPrice.toString() });
 	} catch (err: unknown) {
 		log.error("Can't fetch gas price", err);
-		res.type("json").status(503);
+		res.type("json").status(503).end();
 	}
 });
 
@@ -439,6 +440,17 @@ const jobListener: JobListener = {
 	},
 };
 processingQueue.addJobListener(jobListener);
+
+// Express only treats a handler with four arguments as an error handler
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+	log.error(`${req.method} ${req.path} failed`, err);
+	if (res.headersSent) {
+		res.end();
+		return;
+	}
+	res.status(500).send({ message: "Internal server error" });
+});
 
 app.listen(PORT, async () => {
 	console.log(
