@@ -22,6 +22,7 @@ const TOOL_LIBRARIES = [
 	"src/tools/migration/recoverBanAddresses.ts",
 	"src/tools/migration/recoverAudits.ts",
 	"src/tools/migration/bananoNode.ts",
+	"src/tools/migration/retry.ts",
 	"src/tools/migration/safeErrorMessage.ts",
 	"src/storage/postgres/database.ts",
 	"src/storage/postgres/WithdrawalReservations.ts",

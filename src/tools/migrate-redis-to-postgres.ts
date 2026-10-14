@@ -16,6 +16,7 @@ import { formatReport, TargetState } from "./migration/report";
 import { countTargetRows, writePlan } from "./migration/write";
 import { verifyMigration } from "./migration/verify";
 import {
+	TransactionReceipts,
 	recoverBanAddresses,
 	unwrapsWithoutBanAddress,
 } from "./migration/recoverBanAddresses";
@@ -24,7 +25,8 @@ import {
 	missingAudits,
 	recoverFromChain,
 } from "./migration/recoverAudits";
-import { bananoNodeRpc } from "./migration/bananoNode";
+import { BananoNode, bananoNodeRpc } from "./migration/bananoNode";
+import { retrying } from "./migration/retry";
 import safeErrorMessage from "./migration/safeErrorMessage";
 
 const USAGE = `usage: yarn ledger:migrate-redis [--dry-run | --write | --verify] [options]
@@ -77,11 +79,34 @@ function parseOptions(args: string[]): Options | undefined {
 	};
 }
 
-function blockchainProvider(): ethers.providers.JsonRpcProvider {
-	return new ethers.providers.JsonRpcProvider(config.BlockchainJsonRpc, {
-		name: config.BlockchainNetworkName,
-		chainId: config.BlockchainNetworkChainId,
-	});
+const LOOKUP_RETRIES = { attempts: 7, firstDelayMs: 1_000 };
+
+function blockchainReceipts(): TransactionReceipts {
+	const provider = new ethers.providers.JsonRpcProvider(
+		config.BlockchainJsonRpc,
+		{
+			name: config.BlockchainNetworkName,
+			chainId: config.BlockchainNetworkChainId,
+		}
+	);
+	return {
+		getTransactionReceipt: (hash) =>
+			retrying(() => provider.getTransactionReceipt(hash), {
+				...LOOKUP_RETRIES,
+				label: "Chain RPC",
+			}),
+	};
+}
+
+function bananoNode(): BananoNode {
+	const node = bananoNodeRpc(config.BananoNodeRpcHost);
+	return {
+		blocksInfo: (hashes) =>
+			retrying(() => node.blocksInfo(hashes), {
+				...LOOKUP_RETRIES,
+				label: "Banano node",
+			}),
+	};
 }
 
 function assertChainSettings(): void {
@@ -114,7 +139,7 @@ async function recoveredBanAddresses(
 		`Looking up the BAN address of ${unwraps.length} unwraps on the chain...`
 	);
 	return recoverBanAddresses(
-		blockchainProvider(),
+		blockchainReceipts(),
 		config.WBANContractAddress,
 		unwraps
 	);
@@ -134,9 +159,9 @@ async function chainRecovery(
 	);
 	return recoverFromChain(
 		{
-			node: bananoNodeRpc(config.BananoNodeRpcHost),
+			node: bananoNode(),
 			hotWallet: config.BananoUsersDepositsHotWallet,
-			receipts: blockchainProvider(),
+			receipts: blockchainReceipts(),
 			contractAddress: config.WBANContractAddress,
 		},
 		snapshot
