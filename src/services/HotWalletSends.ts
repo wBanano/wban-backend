@@ -24,13 +24,30 @@ export function rawAmount(ledgerAmount: string): string {
 	return BigNumber.from(ledgerAmount).mul(RAW_PER_LEDGER_UNIT).toString();
 }
 
+function earliestSendTime(reservation: ReservedWithdrawal): number {
+	return (
+		Math.floor(reservation.reservedAt.getTime() / 1_000) - CLOCK_SLACK_SECONDS
+	);
+}
+
+export function historyReachesBack(
+	history: AccountHistoryEntry[],
+	requested: number,
+	reservation: ReservedWithdrawal
+): boolean {
+	if (history.length < requested) {
+		return true;
+	}
+	const oldest = history[history.length - 1];
+	return oldest.localTimestamp < earliestSendTime(reservation);
+}
+
 export function matchingSends(
 	history: AccountHistoryEntry[],
 	reservation: ReservedWithdrawal
 ): AccountHistoryEntry[] {
 	const raw = rawAmount(reservation.amount);
-	const notBefore =
-		Math.floor(reservation.reservedAt.getTime() / 1_000) - CLOCK_SLACK_SECONDS;
+	const notBefore = earliestSendTime(reservation);
 	return history.filter(
 		(entry) =>
 			entry.type === "send" &&

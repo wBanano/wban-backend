@@ -2,6 +2,7 @@ import chai from "chai";
 import { ethers } from "ethers";
 import {
 	AccountHistoryEntry,
+	historyReachesBack,
 	matchingSends,
 	rawAmount,
 } from "../../src/services/HotWalletSends";
@@ -47,5 +48,18 @@ describe("Hot wallet sends", () => {
 		expect(
 			matchingSends(history, reservation).map((s) => s.hash)
 		).to.deep.equal(["MATCH", "CLOCK_SLACK"]);
+	});
+
+	it("tells when the fetched history may not reach back to the reservation", () => {
+		const newest = send({});
+		const older = send({
+			hash: "OLDER",
+			localTimestamp: at("2026-10-14T11:00:00Z"),
+		});
+		expect(historyReachesBack([newest], 2, reservation)).to.equal(true);
+		expect(historyReachesBack([newest, newest], 2, reservation)).to.equal(
+			false
+		);
+		expect(historyReachesBack([newest, older], 2, reservation)).to.equal(true);
 	});
 });

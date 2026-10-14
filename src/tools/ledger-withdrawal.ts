@@ -11,6 +11,7 @@ import {
 import {
 	AccountHistoryEntry,
 	fetchHotWalletHistory,
+	historyReachesBack,
 	matchingSends,
 } from "../services/HotWalletSends";
 import safeErrorMessage from "./migration/safeErrorMessage";
@@ -46,10 +47,13 @@ async function candidateSends(
 	reservations: WithdrawalReservations,
 	reservation: ReservedWithdrawal
 ): Promise<{ entry: AccountHistoryEntry; recorded: boolean }[]> {
-	const sends = matchingSends(
-		await fetchHotWalletHistory(HISTORY_COUNT),
-		reservation
-	);
+	const history = await fetchHotWalletHistory(HISTORY_COUNT);
+	if (!historyReachesBack(history, HISTORY_COUNT, reservation)) {
+		throw new Error(
+			`The last ${HISTORY_COUNT} hot wallet blocks don't reach back to this reservation, check the hot wallet history by hand`
+		);
+	}
+	const sends = matchingSends(history, reservation);
 	const recorded = await reservations.recordedWithdrawalHashes(
 		sends.map((send) => send.hash)
 	);
