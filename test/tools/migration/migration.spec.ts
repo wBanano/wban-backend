@@ -177,6 +177,15 @@ describe("Redis to Postgres migration", () => {
 		await seed.zadd(`deposits:${ALICE}`, T0 + 50, "DLOST");
 		await seed.zadd(`deposits:${ALICE}`, T0 + 60, "DGONE");
 		await seed.zadd(`swaps:ban-to-wban:${ALICE}`, T0 + 70, "0xlostreceipt");
+		await seed.zadd(`swaps:ban-to-wban:${ALICE}`, T0 + 75, "0xzeroreceipt");
+		await seed.hset("audit:0xzeroreceipt", {
+			type: "swap-to-wban",
+			blockchainAddress: WALLET.toLowerCase(),
+			receipt: "0xzeroreceipt",
+			uuid: "1700000000075",
+			amount: "0",
+			timestamp: T0 + 75,
+		});
 		await seed.zadd(
 			`swaps:wban-to-ban:${WALLET.toLowerCase()}`,
 			(T0 + 80) * 1_000,

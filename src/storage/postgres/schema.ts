@@ -103,7 +103,7 @@ export const ledgerEntries = pgTable(
 		index("ledger_entries_reserved_withdrawals")
 			.on(t.createdAt)
 			.where(sql`${t.status} = 'reserved'`),
-		check("ledger_entries_amount_positive", sql`${t.amount} > 0`),
+		check("ledger_entries_amount_not_negative", sql`${t.amount} >= 0`),
 		check(
 			"ledger_entries_withdrawal_fields",
 			sql`(${t.kind} = 'withdrawal') = (${t.requestTimestamp} is not null and ${t.status} is not null)`

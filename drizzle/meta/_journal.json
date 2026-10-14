@@ -15,6 +15,13 @@
       "when": 1792014121297,
       "tag": "0001_recovered_from",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792018351552,
+      "tag": "0002_amount_not_negative",
+      "breakpoints": true
     }
   ]
 }

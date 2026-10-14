@@ -306,11 +306,14 @@ describe("Migration plan", () => {
 		]);
 	});
 
-	it("counts zero amounts and blocks on them", () => {
+	it("counts historical zero amounts and migrates them", () => {
 		deposit(snapshot, ALICE, "D0", "0");
 		const plan = planMigration(snapshot);
 		expect(plan.stats.zeroAmounts).to.equal(1);
-		expect(kinds(plan)).to.deep.equal(["zero_amount"]);
+		expect(plan.blocking).to.deep.equal([]);
+		expect(plan.entries.map((e) => [e.ref, e.amount])).to.deep.equal([
+			["D0", "0"],
+		]);
 	});
 
 	it("keeps the Redis rendering of an unwrap stored in milliseconds", () => {

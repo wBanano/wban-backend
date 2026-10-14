@@ -307,11 +307,6 @@ class Planner {
 		}
 		if (audit.amount === "0") {
 			this.plan.stats.zeroAmounts += 1;
-			this.block(
-				"zero_amount",
-				key,
-				`${member} has amount 0, the amount check has to allow 0 first`
-			);
 		}
 		const oddity = timestampOddity(kind, score, audit);
 		if (oddity) {

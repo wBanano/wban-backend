@@ -1,0 +1,2 @@
+ALTER TABLE "ledger_entries" DROP CONSTRAINT "ledger_entries_amount_positive";--> statement-breakpoint
+ALTER TABLE "ledger_entries" ADD CONSTRAINT "ledger_entries_amount_not_negative" CHECK ("ledger_entries"."amount" >= 0);
