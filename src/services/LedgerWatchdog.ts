@@ -1,6 +1,6 @@
 import { Logger } from "tslog";
 import { ethers } from "ethers";
-import config from "../config";
+import config from "../ledgerConfig";
 import { LedgerHealth } from "../storage/postgres/LedgerHealth";
 
 const CHECK_INTERVAL_MS = 60_000;

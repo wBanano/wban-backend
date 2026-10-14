@@ -80,7 +80,9 @@ export const mochaHooks = {
 			const port = startContainer("redis:8-alpine", 6379, []);
 			process.env.TEST_REDIS_URL = `redis://127.0.0.1:${port}`;
 		}
-		await eventually(() => postgresAnswers(process.env.TEST_DATABASE_URL ?? ""));
+		await eventually(() =>
+			postgresAnswers(process.env.TEST_DATABASE_URL ?? "")
+		);
 		await eventually(() => redisAnswers(process.env.TEST_REDIS_URL ?? ""));
 	},
 

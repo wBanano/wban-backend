@@ -1,6 +1,6 @@
 import * as banano from "@bananocoin/bananojs";
 import { BigNumber } from "ethers";
-import config from "../config";
+import config from "../ledgerConfig";
 import { ReservedWithdrawal } from "../storage/postgres/WithdrawalReservations";
 
 export type AccountHistoryEntry = {

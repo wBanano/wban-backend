@@ -1,51 +1,14 @@
-import * as dotenv from "dotenv";
-import { Logger, TLogLevelName } from "tslog";
+import ledgerConfig from "./ledgerConfig";
 
-// dotenv.config();
-let path;
-switch (process.env.NODE_ENV) {
-	case "test":
-		path = ".env.test";
-		break;
-	case "testnet":
-		path = ".env.testnet";
-		break;
-	case "mainnet":
-		path = ".env.mainnet";
-		break;
-	default:
-		path = ".env.local";
-}
-dotenv.config({ path });
-
-const log: Logger = new Logger({
-	name: "main",
-	minLevel: process.env.LOG_LEVEL as TLogLevelName,
-});
-
-const STORAGE_BACKENDS = ["redis", "postgres"] as const;
-export type LedgerBackend = typeof STORAGE_BACKENDS[number];
-
-function parseStorageBackend(value: string | undefined): LedgerBackend {
-	const backend = value ?? "redis";
-	if (!(STORAGE_BACKENDS as readonly string[]).includes(backend)) {
-		throw new Error(
-			`STORAGE_BACKEND must be one of ${STORAGE_BACKENDS.join(", ")}`
-		);
-	}
-	return backend as LedgerBackend;
-}
+export type { LedgerBackend } from "./ledgerConfig";
 
 export default {
-	BananoUsersDepositsHotWallet:
-		process.env.BANANO_USERS_DEPOSITS_HOT_WALLET ?? "",
 	BananoUsersDepositsColdWallet:
 		process.env.BANANO_USERS_DEPOSITS_COLD_WALLET ?? "",
 	BananoSeed: process.env.BANANO_SEED ?? "",
 	BananoSeedIdx: Number.parseInt(process.env.BANANO_SEED_INDEX ?? "0", 10),
 	BananoRepresentative: process.env.BANANO_REPRESENTATIVE ?? "",
 	BananoWebSocketsAPI: process.env.BANANO_WS_API ?? "",
-	BananoRPCAPI: process.env.BANANO_RPC_API ?? "",
 	BananoPendingTransactionsThreadEnabled:
 		process.env.BANANO_PENDING_TXN_THREAD ?? true,
 	BananoUsersDepositsHotWalletMinimum:
@@ -53,17 +16,10 @@ export default {
 	BananoUsersDepositsHotWalletToColdWalletRatio:
 		process.env.BANANO_USERS_DEPOSITS_HOT_WALLET_TO_COLD_WALLET_RATIO ?? "0.2",
 
-	BlockchainJsonRpc: process.env.BC_JSON_RPC_URL ?? "",
-	BlockchainBlockExplorerUrl: process.env.BC_BLOCK_EXPLORER_URL ?? "",
 	BlockchainGasPriceStrategy:
 		process.env.BC_GAS_TRACKER_STRATEGY ?? "etherscan",
 	BlockchainGasPriceTrackerApi: process.env.BC_GAS_TRACKER_API ?? "",
 	BlockchainGasPriceTrackerApiKey: process.env.BC_GAS_TRACKER_API_KEY ?? "",
-	BlockchainNetworkName: process.env.BC_NETWORK_NAME ?? "",
-	BlockchainNetworkChainId: Number.parseInt(
-		process.env.BC_NETWORK_CHAIN_ID ?? "0",
-		10
-	),
 	BlockchainWalletMnemonic: process.env.BC_WALLET_MMENOMIC ?? "",
 	BlockchainWalletMnemonicSignerIndex:
 		process.env.BC_WALLET_MMENOMIC_SIGNER_INDEX ?? 0,
@@ -71,10 +27,6 @@ export default {
 		process.env.BC_PENDING_TXN_THREAD ?? true,
 	BlockchainWalletBlockRangeMax: Number.parseInt(
 		process.env.BC_BLOCK_RANGE_MAX ?? "3000",
-		10
-	),
-	BlockchainWalletPendingTransactionsStartFromBlock: Number.parseInt(
-		process.env.BC_PENDING_BLOCKS_START ?? "0",
 		10
 	),
 
@@ -92,20 +44,9 @@ export default {
 	BlockchainRelayerApiKey: process.env.BC_RELAYER_API_KEY ?? "",
 	BlockchainRelayerSecretKey: process.env.BC_RELAYER_SECRET_KEY ?? "",
 
-	WBANContractAddress: process.env.WBAN_CONTRACT_ADDRESS ?? "",
 	WBANGaslessSwapAddress: process.env.WBAN_GASLESS_SWAP_ADDRESS ?? "",
-
-	RedisHost: process.env.REDIS_HOST ?? "",
-	RedisPassword: process.env.REDIS_PASSWORD || undefined,
-
-	StorageBackend: parseStorageBackend(process.env.STORAGE_BACKEND),
-	DatabaseHost: process.env.DATABASE_HOST ?? "",
-	DatabasePort: Number.parseInt(process.env.DATABASE_PORT ?? "5432", 10),
-	DatabaseName: process.env.DATABASE_NAME ?? "",
-	DatabaseUser: process.env.DATABASE_USER ?? "",
-	DatabasePassword: process.env.DATABASE_PASSWORD || undefined,
 
 	SiweSessionSecret: process.env.SIWE_SESSION_SECRET ?? "",
 
-	Logger: log,
+	...ledgerConfig,
 };

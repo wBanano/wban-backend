@@ -5,6 +5,7 @@ import {
 	migrateDatabase,
 	poolConfigFromEnv,
 } from "../storage/postgres/database";
+import safeErrorMessage from "./migration/safeErrorMessage";
 
 const run = async () => {
 	const pool = new Pool(poolConfigFromEnv());
@@ -20,6 +21,6 @@ const run = async () => {
 };
 
 run().catch((err) => {
-	console.error(err);
+	console.error(safeErrorMessage(err));
 	process.exit(1);
 });

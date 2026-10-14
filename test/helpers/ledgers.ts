@@ -28,7 +28,10 @@ export type PostgresHarness = LedgerHarness & {
 	pool: Pool;
 };
 
-function heldWrite(): HeldWrite & { arrive: () => void; released: Promise<void> } {
+function heldWrite(): HeldWrite & {
+	arrive: () => void;
+	released: Promise<void>;
+} {
 	let arrive = () => {};
 	let release = () => {};
 	const reached = new Promise<void>((resolve) => {

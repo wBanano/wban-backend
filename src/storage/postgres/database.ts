@@ -5,7 +5,7 @@ import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import * as schema from "./schema";
-import config from "../../config";
+import config from "../../ledgerConfig";
 
 export type Database = NodePgDatabase<typeof schema>;
 

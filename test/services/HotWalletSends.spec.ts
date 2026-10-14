@@ -18,7 +18,9 @@ describe("Hot wallet sends", () => {
 		reservedAt,
 	};
 	const at = (iso: string) => Math.floor(new Date(iso).getTime() / 1_000);
-	const send = (overrides: Partial<AccountHistoryEntry>): AccountHistoryEntry => ({
+	const send = (
+		overrides: Partial<AccountHistoryEntry>
+	): AccountHistoryEntry => ({
 		type: "send",
 		account: "ban_1alice",
 		amount: rawAmount(reservation.amount),
@@ -42,9 +44,8 @@ describe("Hot wallet sends", () => {
 			send({ hash: "TOO_OLD", localTimestamp: at("2026-10-14T11:58:00Z") }),
 			send({ hash: "CLOCK_SLACK", localTimestamp: at("2026-10-14T11:59:30Z") }),
 		];
-		expect(matchingSends(history, reservation).map((s) => s.hash)).to.deep.equal([
-			"MATCH",
-			"CLOCK_SLACK",
-		]);
+		expect(
+			matchingSends(history, reservation).map((s) => s.hash)
+		).to.deep.equal(["MATCH", "CLOCK_SLACK"]);
 	});
 });

@@ -4,7 +4,7 @@ import { and, desc, eq, gt, or, sql, SQL } from "drizzle-orm";
 import { UsersDepositsStorage } from "./UsersDepositsStorage";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 import InsufficientBalanceError from "../errors/InsufficientBalanceError";
-import config from "../config";
+import config from "../ledgerConfig";
 import { LedgerMarker } from "./LedgerMarker";
 import {
 	Database,
@@ -19,6 +19,13 @@ import {
 	ledgerEntries,
 	scanState,
 } from "./postgres/schema";
+import {
+	HistoryItem,
+	depositHistoryItem,
+	swapToBanHistoryItem,
+	swapToWBanHistoryItem,
+	withdrawalHistoryItem,
+} from "./postgres/history";
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
@@ -28,9 +35,6 @@ type NewLedgerEntry = typeof ledgerEntries.$inferInsert & {
 	banAddress: string;
 	amount: string;
 };
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type HistoryItem = Record<string, any>;
 
 const HISTORY_LIMIT = 1000;
 
@@ -42,78 +46,10 @@ const livePendingClaim = () =>
 const WITHDRAWAL_ALREADY_PROCESSED =
 	"Can't withdraw BAN as the transaction was already processed";
 
-function bananoBlockLink(hash: string): string {
-	return `https://creeper.banano.cc/explorer/block/${hash}`;
-}
-
-function blockchainTxLink(hash: string): string {
-	return `${config.BlockchainBlockExplorerUrl}/tx/${hash}`;
-}
-
 function isUniqueViolation(err: unknown, constraint: string): boolean {
 	const cause = (err as { cause?: { code?: string; constraint?: string } })
 		?.cause;
 	return cause?.code === "23505" && cause.constraint === constraint;
-}
-
-function withoutEmptyFields(item: HistoryItem): HistoryItem {
-	return Object.fromEntries(
-		Object.entries(item).filter(([, value]) => value !== null)
-	);
-}
-
-function legacyHistoryItem(entry: LedgerEntry): HistoryItem | undefined {
-	return entry.legacyAudit ? { ...entry.legacyAudit } : undefined;
-}
-
-function depositHistoryItem(entry: LedgerEntry): HistoryItem {
-	const ref = entry.ref ?? "";
-	const item = legacyHistoryItem(entry) ?? {
-		type: "deposit",
-		hash: ref,
-		amount: entry.amount,
-		timestamp: String(entry.occurredAt.getTime()),
-	};
-	return { ...item, link: bananoBlockLink(ref) };
-}
-
-function withdrawalHistoryItem(entry: LedgerEntry): HistoryItem {
-	const ref = entry.ref ?? "";
-	const item = legacyHistoryItem(entry) ?? {
-		type: "withdrawal",
-		hash: ref,
-		amount: entry.amount,
-		timestamp: String(entry.occurredAt.getTime()),
-	};
-	return { ...item, link: bananoBlockLink(ref) };
-}
-
-function swapToWBanHistoryItem(entry: LedgerEntry): HistoryItem {
-	return (
-		legacyHistoryItem(entry) ??
-		withoutEmptyFields({
-			type: "swap-to-wban",
-			blockchainAddress: entry.blockchainAddress,
-			receipt: entry.ref,
-			uuid: entry.uuid,
-			amount: entry.amount,
-			timestamp: String(entry.occurredAt.getTime()),
-		})
-	);
-}
-
-function swapToBanHistoryItem(entry: LedgerEntry): HistoryItem {
-	const item = legacyHistoryItem(entry) ?? {
-		type: "swap-to-ban",
-		hash: entry.ref,
-		banAddress: entry.banAddress,
-		amount: entry.amount,
-		timestamp: String(entry.occurredAt.getTime() * 1_000),
-	};
-	if (item.type !== "swap-to-ban") {
-		return item;
-	}
-	return { ...item, link: blockchainTxLink(entry.ref ?? "") };
 }
 
 class PostgresUsersDepositsStorage implements UsersDepositsStorage {

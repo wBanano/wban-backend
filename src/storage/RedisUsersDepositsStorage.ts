@@ -4,7 +4,7 @@ import Redlock from "redlock";
 import { BigNumber, ethers } from "ethers";
 import { UsersDepositsStorage } from "./UsersDepositsStorage";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
-import config from "../config";
+import config from "../ledgerConfig";
 import { LedgerMarker } from "./LedgerMarker";
 
 /**

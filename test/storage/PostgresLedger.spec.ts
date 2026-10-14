@@ -16,6 +16,7 @@ import {
 } from "../../src/storage/postgres/database";
 import {
 	chainMeta,
+	claims,
 	ledgerEntries,
 	migrationDiscrepancies,
 	accounts,
@@ -125,9 +126,9 @@ describe("Postgres ledger", () => {
 			const [reserved] = await reservations.list();
 			await reservations.confirm(reserved.id, "W1");
 			expect(await svc.getWithdrawals(ALICE)).to.have.length(1);
-			expect(await reservations.recordedWithdrawalHashes(["W1", "W2"])).to.have.keys(
-				"W1"
-			);
+			expect(
+				await reservations.recordedWithdrawalHashes(["W1", "W2"])
+			).to.have.keys("W1");
 			await expect(reservations.confirm(reserved.id, "W2")).to.be.rejectedWith(
 				"is not reserved"
 			);
@@ -147,7 +148,14 @@ describe("Postgres ledger", () => {
 
 	describe("Balance recompute", () => {
 		it("matches the entries after every kind of change", async () => {
-			await svc.storeUserSwapToWBan(ALICE, WALLET, BAN("4"), T0 + 1, "0xr", "1");
+			await svc.storeUserSwapToWBan(
+				ALICE,
+				WALLET,
+				BAN("4"),
+				T0 + 1,
+				"0xr",
+				"1"
+			);
 			await svc.storeUserSwapToBan({
 				blockchainWallet: WALLET,
 				banWallet: ALICE,
@@ -193,7 +201,10 @@ describe("Postgres ledger", () => {
 		it("allows a single live pending claim per BAN address", async () => {
 			expect(await svc.storePendingClaim(BOB, WALLET)).to.equal(true);
 			expect(
-				await svc.storePendingClaim(BOB, "0xdef0000000000000000000000000000000000002")
+				await svc.storePendingClaim(
+					BOB,
+					"0xdef0000000000000000000000000000000000002"
+				)
 			).to.equal(false);
 		});
 
@@ -202,10 +213,29 @@ describe("Postgres ledger", () => {
 			await svc.confirmClaim(BOB);
 			await svc.storePendingClaim(ALICE, WALLET);
 			await svc.confirmClaim(ALICE);
-			expect(await svc.getBanAddressesForBlockchainAddress(WALLET)).to.deep.equal([
-				ALICE,
-				BOB,
+			expect(
+				await svc.getBanAddressesForBlockchainAddress(WALLET)
+			).to.deep.equal([ALICE, BOB]);
+		});
+
+		it("relinks migrated claims without a confirmation time last, by BAN address", async () => {
+			await ledger.db.insert(claims).values([
+				{
+					banAddress: "ban_1zed",
+					blockchainAddress: WALLET,
+					status: "confirmed",
+				},
+				{
+					banAddress: "ban_1amy",
+					blockchainAddress: WALLET,
+					status: "confirmed",
+				},
 			]);
+			await svc.storePendingClaim(BOB, WALLET);
+			await svc.confirmClaim(BOB);
+			expect(
+				await svc.getBanAddressesForBlockchainAddress(WALLET)
+			).to.deep.equal([BOB, "ban_1amy", "ban_1zed"]);
 		});
 
 		it("confirms nothing once the pending claim expired", async () => {
@@ -263,7 +293,9 @@ describe("Postgres ledger", () => {
 		it("starts on its own chain and marks the Redis ledger as moved", async () => {
 			await ledger.db.insert(chainMeta).values(chainIdentityFromConfig());
 			await ledger.storage.assertReady();
-			expect(await new LedgerMarker(ledger.redis).isOnPostgres()).to.equal(true);
+			expect(await new LedgerMarker(ledger.redis).isOnPostgres()).to.equal(
+				true
+			);
 		});
 
 		it("refuses to start when the schema differs from the build", async () => {
@@ -309,9 +341,9 @@ describe("Postgres ledger", () => {
 		});
 
 		it("refuses an unmigrated database", async () => {
-			await expect(assertSchemaIsCurrent(createDatabase(pool))).to.be.rejectedWith(
-				"not migrated"
-			);
+			await expect(
+				assertSchemaIsCurrent(createDatabase(pool))
+			).to.be.rejectedWith("not migrated");
 		});
 
 		it("migrates, records the chain and refuses another chain later", async () => {

@@ -13,6 +13,7 @@ import {
 	fetchHotWalletHistory,
 	matchingSends,
 } from "../services/HotWalletSends";
+import safeErrorMessage from "./migration/safeErrorMessage";
 
 const HISTORY_COUNT = 1_000;
 
@@ -164,6 +165,6 @@ async function run(args: string[]): Promise<void> {
 }
 
 run(process.argv.slice(2)).catch((err) => {
-	console.error(err instanceof Error ? err.message : err);
+	console.error(safeErrorMessage(err));
 	process.exit(1);
 });
