@@ -2,6 +2,8 @@ import { BigNumber } from "ethers";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 
 interface UsersDepositsStorage {
+	assertReady(): Promise<void>;
+
 	getUserAvailableBalance(from: string): Promise<BigNumber>;
 	/*
 	lockBalance(from: string): Promise<void>;
@@ -32,6 +34,11 @@ interface UsersDepositsStorage {
 		banAddress: string,
 		hash: string
 	): Promise<boolean>;
+	reserveUserWithdrawal(
+		banAddress: string,
+		amount: BigNumber,
+		timestamp: number
+	): Promise<void>;
 	storeUserWithdrawal(
 		banAddress: string,
 		amount: BigNumber,

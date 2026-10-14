@@ -5,7 +5,7 @@ import { BigNumber, ethers } from "ethers";
 import { UsersDepositsStorage } from "./UsersDepositsStorage";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 import config from "../config";
-import { match } from "assert";
+import { LedgerMarker } from "./LedgerMarker";
 
 /**
  * Redis storage explanations:
@@ -24,15 +24,20 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 
 	private redlock: Redlock;
 
+	private marker: LedgerMarker;
+
 	private log: Logger = config.Logger.getChildLogger();
 
 	private static LIMIT = 1000;
 
-	constructor() {
-		this.redis = new IORedis({
+	constructor(
+		redis: Redis = new IORedis({
 			host: config.RedisHost,
 			password: config.RedisPassword,
-		});
+		})
+	) {
+		this.redis = redis;
+		this.marker = new LedgerMarker(redis);
 		this.redlock = new Redlock([this.redis], {
 			// the expected clock drift; for more details
 			// see http://redis.io/topics/distlock
@@ -47,6 +52,10 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			// see https://www.awsarchitectureblog.com/2015/03/backoff.html
 			retryJitter: 200, // time in ms
 		});
+	}
+
+	async assertReady(): Promise<void> {
+		return this.marker.assertOnRedis();
 	}
 
 	async getUserAvailableBalance(from: string): Promise<BigNumber> {
@@ -99,6 +108,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		blockchainAddress: string
 	): Promise<boolean> {
 		try {
+			await this.marker.assertOnRedis();
 			const key = `claims:pending:${banAddress.toLowerCase()}:${blockchainAddress.toLowerCase()}`;
 			await this.redis
 				.multi()
@@ -150,6 +160,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	}
 
 	async confirmClaim(banAddress: string): Promise<boolean> {
+		await this.marker.assertOnRedis();
 		const pendingClaims = await this.redis.keys(
 			`claims:pending:${banAddress.toLowerCase()}:*`
 		);
@@ -162,20 +173,11 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	async getBanAddressesForBlockchainAddress(
 		blockchainAddress: string
 	): Promise<Array<string>> {
-		const claims = await this.redis.keys(
-			`claims:*:${blockchainAddress.toLowerCase()}`
-		);
-		const regexp = new RegExp(
-			`claims:(?<banAddress>.*):${blockchainAddress.toLowerCase()}`,
-			"g"
-		);
+		const suffix = `:${blockchainAddress.toLowerCase()}`;
+		const claims = await this.redis.keys(`claims:*${suffix}`);
 		return claims
-			.map((claim) => {
-				const matches = regexp.exec(claim);
-				const banAddress = matches?.groups?.banAddress;
-				return banAddress ?? "";
-			})
-			.filter((banAddress) => banAddress !== "");
+			.filter((claim) => !claim.startsWith("claims:pending:"))
+			.map((claim) => claim.slice("claims:".length, -suffix.length));
 	}
 
 	async storeUserDeposit(
@@ -185,6 +187,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		hash: string
 	): Promise<void> {
 		const banAddress = _banAddress.toLowerCase();
+		await this.marker.assertOnRedis();
 		this.log.info(
 			`Storing user deposit from: ${banAddress}, amount: ${amount} BAN, hash: ${hash}`
 		);
@@ -241,6 +244,10 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		return isAlreadyStored != null;
 	}
 
+	async reserveUserWithdrawal(): Promise<void> {
+		return this.marker.assertOnRedis();
+	}
+
 	async storeUserWithdrawal(
 		_banAddress: string,
 		amount: BigNumber,
@@ -248,6 +255,13 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		hash: string
 	): Promise<void> {
 		const banAddress = _banAddress.toLowerCase();
+		await this.marker.assertOnRedis();
+		if (await this.containsUserWithdrawalRequest(banAddress, timestamp)) {
+			this.log.warn(
+				`User withdrawal request ${hash} from ${banAddress} was already processed. Skipping it...`
+			);
+			return;
+		}
 		this.log.info(
 			`Storing user withdrawal to: ${banAddress}, amount: ${ethers.utils.formatEther(
 				amount
@@ -317,6 +331,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			throw new Error("Missing BAN address");
 		}
 		const banAddress = _banAddress.toLowerCase();
+		await this.marker.assertOnRedis();
 		this.log.info(
 			`Storing swap of ${ethers.utils.formatEther(
 				amount
@@ -357,6 +372,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		if (!swap.banWallet) {
 			throw new Error("Missing BAN address");
 		}
+		await this.marker.assertOnRedis();
 		const lock = await this.redlock.acquire(
 			[`locks:ban-balance:${swap.banWallet}`],
 			1_000
@@ -431,6 +447,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	}
 
 	async setLastBlockchainBlockProcessed(block: number): Promise<void> {
+		await this.marker.assertOnRedis();
 		const lastBlockProcessed = await this.getLastBlockchainBlockProcessed();
 		if (block > lastBlockProcessed) {
 			this.redis.set("blockchain:blocks:latest", block.toString());
@@ -515,6 +532,7 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 	}
 
 	async storeFreeSwap(from: string, txnId: string): Promise<void> {
+		await this.marker.assertOnRedis();
 		await this.redis.set(`swaps:gasless:${from.toLowerCase()}`, txnId);
 		this.log.info(`Stored gasless swap from ${from.toLowerCase()}`);
 	}

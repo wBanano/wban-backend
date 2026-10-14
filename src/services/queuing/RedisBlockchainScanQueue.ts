@@ -73,6 +73,10 @@ class RedisBlockchainScanQueue implements BlockchainScanQueue {
 		this.queue.resume();
 	}
 
+	async stop(): Promise<void> {
+		await this.worker.close();
+	}
+
 	registerProcessor(jobName: string, processor: Processor): void {
 		this.worker.registerProcessorForJobNamed(jobName, processor);
 	}

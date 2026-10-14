@@ -23,6 +23,19 @@ const log: Logger = new Logger({
 	minLevel: process.env.LOG_LEVEL as TLogLevelName,
 });
 
+const STORAGE_BACKENDS = ["redis", "postgres"] as const;
+export type LedgerBackend = typeof STORAGE_BACKENDS[number];
+
+function parseStorageBackend(value: string | undefined): LedgerBackend {
+	const backend = value ?? "redis";
+	if (!(STORAGE_BACKENDS as readonly string[]).includes(backend)) {
+		throw new Error(
+			`STORAGE_BACKEND must be one of ${STORAGE_BACKENDS.join(", ")}`
+		);
+	}
+	return backend as LedgerBackend;
+}
+
 export default {
 	BananoUsersDepositsHotWallet:
 		process.env.BANANO_USERS_DEPOSITS_HOT_WALLET ?? "",
@@ -84,6 +97,13 @@ export default {
 
 	RedisHost: process.env.REDIS_HOST ?? "",
 	RedisPassword: process.env.REDIS_PASSWORD || undefined,
+
+	StorageBackend: parseStorageBackend(process.env.STORAGE_BACKEND),
+	DatabaseHost: process.env.DATABASE_HOST ?? "",
+	DatabasePort: Number.parseInt(process.env.DATABASE_PORT ?? "5432", 10),
+	DatabaseName: process.env.DATABASE_NAME ?? "",
+	DatabaseUser: process.env.DATABASE_USER ?? "",
+	DatabasePassword: process.env.DATABASE_PASSWORD || undefined,
 
 	SiweSessionSecret: process.env.SIWE_SESSION_SECRET ?? "",
 

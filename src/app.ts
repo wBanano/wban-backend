@@ -11,12 +11,13 @@ import { TokensList } from "./services/TokensList";
 import { BlockchainGasPriceTracker } from "./services/BlockchainGasPriceTracker";
 import { OwlracleGasPriceTracker } from "./services/OwlracleGasPriceTracker";
 import { EtherscanGasPriceTracker } from "./services/EtherscanGasPriceTracker";
-import { UsersDepositsStorage } from "./storage/UsersDepositsStorage";
-import { RedisUsersDepositsStorage } from "./storage/RedisUsersDepositsStorage";
+import createLedger from "./storage/createLedger";
+import LedgerWatchdog from "./services/LedgerWatchdog";
 import { UsersDepositsService } from "./services/UsersDepositsService";
 import ClaimRequest from "./models/requests/ClaimRequest";
 import SwapRequest from "./models/requests/SwapRequest";
 import WithdrawalRequest from "./models/requests/WithdrawalRequest";
+import isPositiveAmount from "./models/requests/positiveAmount";
 import config from "./config";
 import { ClaimResponse } from "./models/responses/ClaimResponse";
 import ProcessingQueue from "./services/queuing/ProcessingQueue";
@@ -32,6 +33,7 @@ import KirbyBananoWalletsBlacklist from "./services/KirbyBananoWalletsBlacklist"
 const app: Application = express();
 const sseManager = new SSEManager();
 const PORT = 3000;
+const SHUTDOWN_DEADLINE_MS = 4_000;
 const log: Logger = config.Logger.getChildLogger();
 
 const corsWhitelist = [
@@ -74,8 +76,8 @@ app.use(
 	})
 );
 
-const usersDepositsStorage: UsersDepositsStorage =
-	new RedisUsersDepositsStorage();
+const { storage: usersDepositsStorage, health: ledgerHealth } = createLedger();
+const ledgerWatchdog = ledgerHealth && new LedgerWatchdog(ledgerHealth);
 const usersDepositsService: UsersDepositsService = new UsersDepositsService(
 	usersDepositsStorage
 );
@@ -95,7 +97,6 @@ const svc = new Service(
 	blockchainScanQueue,
 	new KirbyBananoWalletsBlacklist()
 );
-svc.start();
 
 app.get("/health", async (req: Request, res: Response) => {
 	// check Blockchain connectivity by checking balance of an account
@@ -122,21 +123,36 @@ app.get("/health", async (req: Request, res: Response) => {
 		return;
 	}
 
-	// check connection to Redis node
+	// check connection to the ledger storage
 	try {
-		usersDepositsStorage.isClaimed(
+		await usersDepositsStorage.isClaimed(
 			"ban_1wban1mwe1ywc7dtknaqdbog5g3ah333acmq8qxo5anibjqe4fqz9x3xz6ky"
 		);
 	} catch (e) {
-		log.error("Can't make Redis query", e);
+		log.error("Can't query the ledger storage", e);
 		res.status(503).send({
-			status: "Can't make Redis query",
+			status: "Can't query the ledger storage",
 		});
 		return;
 	}
 
 	res.send({
 		status: "OK",
+	});
+});
+
+app.get("/health/ledger", async (req: Request, res: Response) => {
+	if (!ledgerHealth) {
+		res.status(404).send();
+		return;
+	}
+	const { stuckWithdrawals, balanceMismatches } = await ledgerHealth.report();
+	const healthy =
+		stuckWithdrawals.length === 0 && balanceMismatches.length === 0;
+	res.status(healthy ? 200 : 503).send({
+		status: healthy ? "OK" : "Ledger needs attention",
+		stuckWithdrawals: stuckWithdrawals.length,
+		balanceMismatches: balanceMismatches.length,
 	});
 });
 
@@ -161,6 +177,11 @@ app.post("/withdrawals/ban", async (req: Request, res: Response) => {
 	const banWallet: string = withdrawalRequest.ban;
 	const blockchainWallet: string = withdrawalRequest.blockchain;
 	const signature: string = withdrawalRequest.sig;
+
+	if (!isPositiveAmount(banAmount)) {
+		res.status(400).send({ message: "Amount must be greater than zero." });
+		return;
+	}
 
 	log.info(`Withdrawing ${banAmount} BAN to ${banWallet}`);
 
@@ -251,6 +272,11 @@ app.post("/swap", async (req: Request, res: Response) => {
 	log.debug(
 		`banAmount=${banAmount}, banWallet=${banWallet}, blockchainWallet=${blockchainWallet}, signature=${signature}`
 	);
+
+	if (!isPositiveAmount(banAmount)) {
+		res.status(400).send({ message: "Amount must be greater than zero." });
+		return;
+	}
 
 	await svc.swapToWBAN(
 		banWallet,
@@ -439,8 +465,27 @@ app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
 	res.status(500).send({ message: "Internal server error" });
 });
 
-app.listen(PORT, async () => {
-	console.log(
-		`⚡️[wBAN backend]: Server is running at http://localhost:${PORT}`
-	);
-});
+async function shutDown(): Promise<void> {
+	log.info("Received SIGTERM, stopping the workers");
+	setTimeout(() => process.exit(0), SHUTDOWN_DEADLINE_MS).unref();
+	ledgerWatchdog?.stop();
+	await svc.stop();
+	process.exit(0);
+}
+
+usersDepositsStorage
+	.assertReady()
+	.then(() => {
+		process.once("SIGTERM", shutDown);
+		svc.start();
+		ledgerWatchdog?.start();
+		app.listen(PORT, async () => {
+			console.log(
+				`⚡️[wBAN backend]: Server is running at http://localhost:${PORT}`
+			);
+		});
+	})
+	.catch((err) => {
+		log.fatal("Refusing to start", err);
+		process.exit(1);
+	});

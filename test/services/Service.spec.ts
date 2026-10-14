@@ -381,6 +381,136 @@ describe("Main Service", () => {
 		});
 	});
 
+	describe("Withdrawal reservations", () => {
+		const banWallet =
+			"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
+		const blockchainWallet = "0xec410E9F2756C30bE4682a7E29918082Adc12B55";
+		let withdrawal: BananoUserWithdrawal;
+
+		beforeEach(() => {
+			withdrawal = {
+				banWallet,
+				amount: "150",
+				blockchainWallet,
+				signature: "",
+				timestamp: Date.now(),
+				attempt: 0,
+			};
+			depositsService.containsUserWithdrawalRequest.resolves(false);
+			depositsService.isClaimed.withArgs(banWallet).resolves(true);
+			depositsService.hasClaim
+				.withArgs(banWallet, blockchainWallet)
+				.resolves(true);
+			depositsService.getUserAvailableBalance
+				.withArgs(banWallet)
+				.resolves(ethers.utils.parseEther("200"));
+			banano.getBalance
+				.withArgs(config.BananoUsersDepositsHotWallet)
+				.resolves(ethers.utils.parseEther("300"));
+		});
+
+		it("reserves before sending and records the block hash after", async () => {
+			banano.sendBan.resolves("HASH");
+			expect(await svc.processWithdrawBAN(withdrawal)).to.equal("HASH");
+			expect(depositsService.reserveUserWithdrawal).to.have.been.calledOnceWith(
+				banWallet,
+				ethers.utils.parseEther("150"),
+				withdrawal.timestamp
+			);
+			expect(depositsService.reserveUserWithdrawal).to.have.been.calledBefore(
+				banano.sendBan
+			);
+			expect(depositsService.storeUserWithdrawal).to.have.been.calledAfter(
+				banano.sendBan
+			);
+			expect(depositsService.storeUserWithdrawal).to.have.been.calledWith(
+				banWallet,
+				ethers.utils.parseEther("150"),
+				withdrawal.timestamp,
+				"HASH"
+			);
+		});
+
+		it("keeps the reservation when the send fails", async () => {
+			banano.sendBan.rejects(new Error("node timeout"));
+			await expect(svc.processWithdrawBAN(withdrawal)).to.be.rejectedWith(
+				"node timeout"
+			);
+			expect(depositsService.reserveUserWithdrawal).to.have.been.calledOnce;
+			expect(depositsService.storeUserWithdrawal).to.not.have.been.called;
+		});
+
+		it("keeps the reservation when the send returns no block hash", async () => {
+			banano.sendBan.resolves("");
+			await expect(svc.processWithdrawBAN(withdrawal)).to.be.rejectedWith(
+				"stays reserved"
+			);
+			expect(depositsService.storeUserWithdrawal).to.not.have.been.called;
+		});
+
+		it("sends nothing when the reservation is refused", async () => {
+			depositsService.reserveUserWithdrawal.rejects(
+				new Error("Can't withdraw BAN as the transaction was already processed")
+			);
+			await expect(svc.processWithdrawBAN(withdrawal)).to.be.rejectedWith(
+				"already processed"
+			);
+			expect(banano.sendBan).to.not.have.been.called;
+		});
+
+		it("rejects a zero withdrawal", async () => {
+			withdrawal.amount = "0";
+			await expect(svc.processWithdrawBAN(withdrawal)).to.be.rejectedWith(
+				"Can't withdraw zero BAN"
+			);
+			expect(depositsService.reserveUserWithdrawal).to.not.have.been.called;
+		});
+	});
+
+	describe("Zero amounts", () => {
+		it("rejects a zero swap to wBAN before signing a receipt", async () => {
+			const from =
+				"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
+			const wallet = ethers.Wallet.createRandom();
+			const signature = await wallet.signMessage(
+				`Swap 0 BAN for wBAN with BAN I deposited from my wallet "${from}"`
+			);
+			depositsService.hasClaim.withArgs(from, wallet.address).resolves(true);
+			await expect(
+				svc.processSwapToWBAN({
+					from,
+					amount: 0,
+					blockchainWallet: wallet.address,
+					timestamp: Date.now(),
+					signature,
+				})
+			).to.be.rejectedWith("Can't swap zero BAN");
+			expect(blockchain.createMintReceipt).to.not.have.been.called;
+		});
+
+		it("ignores a zero unwrap", async () => {
+			await svc.processSwapToBAN({
+				banWallet: "ban_1someone",
+				blockchainWallet: "0xec410E9F2756C30bE4682a7E29918082Adc12B55",
+				amount: "0.0",
+				wbanBalance: "1.0",
+				hash: "0xzero",
+				timestamp: Date.now(),
+			});
+			expect(depositsService.storeUserSwapToBan).to.not.have.been.called;
+		});
+	});
+
+	describe("Shutdown", () => {
+		it("stops both queues", async () => {
+			processingQueue.stop.resolves();
+			blockchainScanQueue.stop.resolves();
+			await svc.stop();
+			expect(processingQueue.stop).to.have.been.calledOnce;
+			expect(blockchainScanQueue.stop).to.have.been.calledOnce;
+		});
+	});
+
 	describe("Safeguards against impersonating", () => {
 		it("Checks that a swap can only be done from a valid claim", async () => {
 			const amount = ethers.utils.parseEther("10");

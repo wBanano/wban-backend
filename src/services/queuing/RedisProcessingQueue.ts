@@ -59,6 +59,10 @@ class RedisProcessingQueue implements ProcessingQueue {
 		});
 	}
 
+	async stop(): Promise<void> {
+		await this.worker.close();
+	}
+
 	registerProcessor(jobName: OperationsNames, processor: Processor): void {
 		this.worker.registerProcessorForJobNamed(jobName, processor);
 	}

@@ -84,7 +84,7 @@ class UsersDepositsService {
 			return;
 		}
 		// store the user deposit
-		this.usersDepositsStorage.storeUserDeposit(
+		await this.usersDepositsStorage.storeUserDeposit(
 			banAddress,
 			amount,
 			timestamp,
@@ -101,26 +101,25 @@ class UsersDepositsService {
 		);
 	}
 
+	async reserveUserWithdrawal(
+		banAddress: string,
+		amount: BigNumber,
+		timestamp: number
+	): Promise<void> {
+		return this.usersDepositsStorage.reserveUserWithdrawal(
+			banAddress,
+			amount,
+			timestamp
+		);
+	}
+
 	async storeUserWithdrawal(
 		banAddress: string,
 		amount: BigNumber,
 		timestamp: number,
 		hash: string
 	): Promise<void> {
-		// check if the transaction wasn't already ingested!
-		if (
-			await this.usersDepositsStorage.containsUserWithdrawalRequest(
-				banAddress,
-				timestamp
-			)
-		) {
-			this.log.warn(
-				`User withdrawal request ${hash} from ${banAddress} was already processed. Skipping it...`
-			);
-			return;
-		}
-		// store the user withdrawal
-		this.usersDepositsStorage.storeUserWithdrawal(
+		return this.usersDepositsStorage.storeUserWithdrawal(
 			banAddress,
 			amount,
 			timestamp,

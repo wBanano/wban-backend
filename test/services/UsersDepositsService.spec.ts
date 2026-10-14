@@ -1,12 +1,14 @@
 import chai from "chai";
 import * as sinon from "ts-sinon";
 import sinonChai from "sinon-chai";
+import chaiAsPromised from "chai-as-promised";
 import { BigNumber } from "ethers";
 import { UsersDepositsService } from "../../src/services/UsersDepositsService";
 import { UsersDepositsStorage } from "../../src/storage/UsersDepositsStorage";
 
 const { expect } = chai;
 chai.use(sinonChai);
+chai.use(chaiAsPromised);
 
 describe("Users Deposits Service", () => {
 	let svc: UsersDepositsService;
@@ -48,5 +50,20 @@ describe("Users Deposits Service", () => {
 		).to.have.been.calledTwice.and.calledWith(address, hash);
 		// ... to make sure the transaction is not store twice but once!
 		expect(storage.storeUserDeposit).to.have.been.calledOnce;
+	});
+
+	it("Fails when the storage can't record a deposit", async () => {
+		storage.containsUserDepositTransaction.resolves(false);
+		storage.storeUserDeposit.rejects(new Error("write failed"));
+		await expect(
+			svc.storeUserDeposit("ban_1a", BigNumber.from(1), Date.now(), "H")
+		).to.be.rejectedWith("write failed");
+	});
+
+	it("Fails when the storage can't record a withdrawal", async () => {
+		storage.storeUserWithdrawal.rejects(new Error("write failed"));
+		await expect(
+			svc.storeUserWithdrawal("ban_1a", BigNumber.from(1), Date.now(), "H")
+		).to.be.rejectedWith("write failed");
 	});
 });

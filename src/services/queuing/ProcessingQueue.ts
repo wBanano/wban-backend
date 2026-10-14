@@ -10,6 +10,7 @@ import GaslessSwap from "../../models/operations/GaslessSwap";
 
 interface ProcessingQueue {
 	start(): void;
+	stop(): Promise<void>;
 	registerProcessor(jobName: OperationsNames, processor: Processor): void;
 	addJobListener(listener: JobListener): void;
 

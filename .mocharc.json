@@ -1,6 +1,6 @@
 {
 	"extension": ["ts"],
 	"spec": "./test/**/*.spec.ts",
-	"require": "ts-node/register",
+	"require": ["ts-node/register", "test/hooks/containers.ts"],
 	"timeout": 12000
 }

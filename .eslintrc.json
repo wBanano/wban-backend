@@ -36,6 +36,10 @@
 				"tsx": "never"
 			}
 		],
+		"import/no-extraneous-dependencies": [
+			"error",
+			{ "devDependencies": ["drizzle.config.ts"] }
+		],
 		"no-shadow": "off", // replaced by ts-eslint rule below
 		"@typescript-eslint/no-shadow": "error"
 	},

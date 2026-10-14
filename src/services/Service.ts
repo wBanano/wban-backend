@@ -161,6 +161,13 @@ class Service {
 		this.banano.subscribeToBananoNotificationsForWallet();
 	}
 
+	async stop(): Promise<void> {
+		await Promise.all([
+			this.processingQueue.stop(),
+			this.blockchainScanQueue.stop(),
+		]);
+	}
+
 	async getUserAvailableBalance(from: string): Promise<BigNumber> {
 		return this.usersDepositsService.getUserAvailableBalance(from);
 	}
@@ -295,6 +302,9 @@ class Service {
 		if (withdrawnAmount.isNegative()) {
 			throw new Error("Can't withdraw negative amounts of BAN");
 		}
+		if (withdrawnAmount.isZero()) {
+			throw new Error("Can't withdraw zero BAN");
+		}
 
 		// check if deposits are greater than or equal to amount to withdraw
 		const availableBalance: BigNumber =
@@ -307,14 +317,22 @@ class Service {
 			throw new InsufficientBalanceError(message);
 		}
 
-		// send the BAN to the user
-		const { pending, hash } = await this.eventuallySendBan(withdrawal);
-
-		if (pending || !hash) {
+		if (!(await this.hotWalletCovers(withdrawnAmount))) {
+			await this.processingQueue.addBananoUserPendingWithdrawal(withdrawal);
 			return "";
 		}
 
-		// decrease user deposits
+		await this.usersDepositsService.reserveUserWithdrawal(
+			banWallet,
+			withdrawnAmount,
+			timestamp
+		);
+		const hash = await this.banano.sendBan(banWallet, withdrawnAmount);
+		if (!hash) {
+			throw new Error(
+				`Sending ${amount} BAN to "${banWallet}" returned no block hash, the withdrawal stays reserved`
+			);
+		}
 		await this.usersDepositsService.storeUserWithdrawal(
 			banWallet,
 			withdrawnAmount,
@@ -365,6 +383,9 @@ class Service {
 		if (amount.isNegative()) {
 			throw new Error("Can't swap negative amounts of BAN");
 		}
+		if (amount.isZero()) {
+			throw new Error("Can't swap zero BAN");
+		}
 
 		// check if deposits are greater than or equal to amount to swap
 		const availableBalance: BigNumber =
@@ -400,7 +421,7 @@ class Service {
 		if (
 			this.relayerSigner &&
 			wrapCount === 1 &&
-			amountStr >= config.BlockchainGasLessBananoThreshold
+			amountStr >= Number(config.BlockchainGasLessBananoThreshold)
 		) {
 			const cryptoBalance = await this.relayerSigner.provider.getBalance(
 				blockchainWallet
@@ -449,6 +470,13 @@ class Service {
 		this.log.info(
 			`Swapping ${swap.amount} wBAN to BAN (txn: ${swap.hash}) into wallet "${swap.banWallet}"...`
 		);
+		if (ethers.utils.parseEther(swap.amount).isZero()) {
+			this.log.warn(`Ignoring swap of zero wBAN in transaction "${swap.hash}"`);
+			return {
+				hash: swap.hash,
+				wbanBalance: swap.wbanBalance,
+			};
+		}
 		// check if the BAN were already sent
 		if (await this.usersDepositsService.containsUserSwapToBan(swap)) {
 			this.log.warn(`Swap for transaction "${swap.hash}" was already done.`);
@@ -624,27 +652,21 @@ class Service {
 		return tx;
 	}
 
-	private async eventuallySendBan(
-		withdrawal: BananoUserWithdrawal
-	): Promise<{ pending: boolean; hash?: string }> {
-		const amountStr = withdrawal.amount;
-		const amount: BigNumber = ethers.utils.parseEther(amountStr);
-		// check if hot wallet balance is greater than or equal to amount to withdraw
+	private async hotWalletCovers(amount: BigNumber): Promise<boolean> {
 		const hotWalletBalance: BigNumber = await this.banano.getBalance(
 			config.BananoUsersDepositsHotWallet
 		);
-		if (hotWalletBalance.lt(amount)) {
-			this.log.warn(
-				`Hot wallet balance of ${ethers.utils.formatEther(
-					hotWalletBalance
-				)} BAN is not enough to proceed with a withdrawal of ${amountStr} BAN. Adding a pending withdrawal to queue.`
-			);
-			await this.processingQueue.addBananoUserPendingWithdrawal(withdrawal);
-			return { pending: true };
+		if (hotWalletBalance.gte(amount)) {
+			return true;
 		}
-		// send the BAN to the user
-		const hash = await this.banano.sendBan(withdrawal.banWallet, amount);
-		return { pending: false, hash };
+		this.log.warn(
+			`Hot wallet balance of ${ethers.utils.formatEther(
+				hotWalletBalance
+			)} BAN is not enough to proceed with a withdrawal of ${ethers.utils.formatEther(
+				amount
+			)} BAN. Adding a pending withdrawal to queue.`
+		);
+		return false;
 	}
 
 	private withdrawalProcessor(
