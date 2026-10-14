@@ -40,6 +40,7 @@ export default {
 	BananoUsersDepositsHotWallet:
 		process.env.BANANO_USERS_DEPOSITS_HOT_WALLET ?? "",
 	BananoRPCAPI: process.env.BANANO_RPC_API ?? "",
+	BananoNodeRpcHost: process.env.BANANO_NODE_RPC_HOST ?? "",
 
 	BlockchainJsonRpc: process.env.BC_JSON_RPC_URL ?? "",
 	BlockchainBlockExplorerUrl: process.env.BC_BLOCK_EXPLORER_URL ?? "",

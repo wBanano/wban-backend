@@ -31,15 +31,16 @@ export function unwrapsWithoutBanAddress(
 	return unwraps;
 }
 
-export async function banAddressFromChain(
-	receipts: TransactionReceipts,
+export type SwapToBanEvent = { banAddress: string; amount: string };
+
+export function swapToBanEvents(
+	receipt: ethers.providers.TransactionReceipt | null,
 	contractAddress: string,
-	unwrap: UnwrapWithoutBanAddress
-): Promise<string | undefined> {
+	from: string
+): SwapToBanEvent[] {
 	// eslint-disable-next-line camelcase
 	const wban = WBANToken__factory.createInterface();
-	const receipt = await receipts.getTransactionReceipt(unwrap.hash);
-	const matches = (receipt?.logs ?? [])
+	return (receipt?.logs ?? [])
 		.filter(
 			(log) => log.address.toLowerCase() === contractAddress.toLowerCase()
 		)
@@ -53,13 +54,28 @@ export async function banAddressFromChain(
 		.filter(
 			(event) =>
 				event?.name === "SwapToBan" &&
-				String(event.args.from).toLowerCase() === unwrap.blockchainAddress &&
-				event.args.amount.toString() === unwrap.amount
-		);
+				String(event.args.from).toLowerCase() === from.toLowerCase()
+		)
+		.map((event) => ({
+			banAddress: String(event?.args.banAddress).toLowerCase(),
+			amount: String(event?.args.amount),
+		}));
+}
+
+export async function banAddressFromChain(
+	receipts: TransactionReceipts,
+	contractAddress: string,
+	unwrap: UnwrapWithoutBanAddress
+): Promise<string | undefined> {
+	const matches = swapToBanEvents(
+		await receipts.getTransactionReceipt(unwrap.hash),
+		contractAddress,
+		unwrap.blockchainAddress
+	).filter((event) => event.amount === unwrap.amount);
 	if (matches.length !== 1) {
 		return undefined;
 	}
-	return String(matches[0]?.args.banAddress).toLowerCase();
+	return matches[0].banAddress;
 }
 
 export async function recoverBanAddresses(

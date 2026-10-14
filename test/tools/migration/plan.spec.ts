@@ -5,6 +5,12 @@ import {
 	LedgerSnapshot,
 } from "../../../src/tools/migration/snapshot";
 import { planMigration } from "../../../src/tools/migration/plan";
+import {
+	ATTRIBUTED,
+	ChainRecovery,
+	WRAP_NOT_RECOVERABLE,
+} from "../../../src/tools/migration/recoverAudits";
+import { formatReport } from "../../../src/tools/migration/report";
 
 const { expect } = chai;
 
@@ -110,6 +116,172 @@ describe("Migration plan", () => {
 		expect(kinds(plan)).to.deep.equal(["missing_audit"]);
 		expect(plan.discrepancies.map((d) => [d.kind, d.redisKey])).to.deep.include(
 			["orphan_audit", "audit:ORPHAN"]
+		);
+	});
+
+	it("plans history recovered from the chains and records what wasn't recovered", () => {
+		snapshot.history.deposit.set(ALICE, [
+			{ member: "D1", score: T0 },
+			{ member: "D2", score: T0 + 1 },
+		]);
+		snapshot.history.withdrawal.set(ALICE, [{ member: "W1", score: T0 + 2 }]);
+		snapshot.history.swap_to_wban.set(BOB, [
+			{ member: "0xreceipt", score: T0 + 3 },
+		]);
+		snapshot.history.swap_to_ban.set(WALLET, [
+			{ member: "0xtx", score: (T0 + 4) * 1_000 },
+		]);
+		snapshot.balances.set(ALICE, BAN("7"));
+		snapshot.balances.set(BOB, BAN("1"));
+		const chainRecovery: ChainRecovery = {
+			audits: {
+				recovered: new Map([
+					[
+						"deposit:D1",
+						{ banAddress: ALICE, amount: BAN("10"), source: "banano_node" },
+					],
+					[
+						"withdrawal:W1",
+						{ banAddress: ALICE, amount: BAN("4"), source: "banano_node" },
+					],
+					[
+						"swap_to_ban:0xtx",
+						{
+							banAddress: ALICE,
+							amount: BAN("1"),
+							source: "swap_to_ban_event",
+						},
+					],
+				]),
+				unrecovered: new Map([
+					["deposit:D2", { reason: "block not found on the node" }],
+					["swap_to_wban:0xreceipt", { reason: WRAP_NOT_RECOVERABLE }],
+				]),
+			},
+			orphans: new Map(),
+		};
+		const plan = planMigration(snapshot, { chainRecovery });
+		expect(plan.blocking).to.deep.equal([]);
+		expect(
+			plan.entries.map((e) => [
+				e.kind,
+				e.ref,
+				e.amount,
+				e.recoveredFrom,
+				e.occurredAt.getTime(),
+				e.requestTimestamp,
+				e.status,
+				e.blockchainAddress,
+			])
+		).to.deep.equal([
+			["deposit", "D1", BAN("10"), "banano_node", T0, null, null, null],
+			[
+				"withdrawal",
+				"W1",
+				BAN("4"),
+				"banano_node",
+				T0 + 2,
+				T0 + 2,
+				"sent",
+				null,
+			],
+			[
+				"swap_to_ban",
+				"0xtx",
+				BAN("1"),
+				"swap_to_ban_event",
+				T0 + 4,
+				null,
+				null,
+				WALLET,
+			],
+		]);
+		expect(
+			plan.discrepancies
+				.filter((d) => d.kind === "unrecovered_audit")
+				.map((d) => [d.banAddress, d.redisKey, d.details])
+		).to.deep.equal([
+			[
+				ALICE,
+				`deposits:${ALICE}`,
+				{
+					kind: "deposit",
+					ref: "D2",
+					score: T0 + 1,
+					reason: "block not found on the node",
+				},
+			],
+			[
+				BOB,
+				`swaps:ban-to-wban:${BOB}`,
+				{
+					kind: "swap_to_wban",
+					ref: "0xreceipt",
+					score: T0 + 3,
+					reason: WRAP_NOT_RECOVERABLE,
+				},
+			],
+		]);
+		expect(plan.balances).to.deep.equal([
+			{
+				banAddress: ALICE,
+				stored: BAN("7"),
+				recomputed: BAN("7"),
+				hasBalanceKey: true,
+				historyComplete: false,
+			},
+			{
+				banAddress: BOB,
+				stored: BAN("1"),
+				recomputed: "0",
+				hasBalanceKey: true,
+				historyComplete: false,
+			},
+		]);
+	});
+
+	it("still blocks on a missing audit the recovery never looked at", () => {
+		snapshot.history.deposit.set(ALICE, [{ member: "D1", score: T0 }]);
+		const plan = planMigration(snapshot, {
+			chainRecovery: {
+				audits: { recovered: new Map(), unrecovered: new Map() },
+				orphans: new Map(),
+			},
+		});
+		expect(kinds(plan)).to.deep.equal(["missing_audit"]);
+	});
+
+	it("reports drift only for accounts whose history is complete", () => {
+		deposit(snapshot, ALICE, "D1", BAN("10"));
+		snapshot.balances.set(ALICE, BAN("12"));
+		deposit(snapshot, BOB, "D2", BAN("2"));
+		snapshot.balances.set(BOB, BAN("5"));
+		snapshot.audits.set("ORPHAN", { type: "deposit", amount: BAN("3") });
+		const attribution = { banAddress: ALICE, outcome: ATTRIBUTED };
+		const plan = planMigration(snapshot, {
+			chainRecovery: {
+				audits: { recovered: new Map(), unrecovered: new Map() },
+				orphans: new Map([["ORPHAN", attribution]]),
+			},
+		});
+		expect(
+			plan.balances.map((b) => [b.banAddress, b.historyComplete])
+		).to.deep.equal([
+			[ALICE, false],
+			[BOB, true],
+		]);
+		expect(plan.discrepancies).to.deep.include({
+			kind: "orphan_audit",
+			banAddress: ALICE,
+			redisKey: "audit:ORPHAN",
+			details: { type: "deposit", amount: BAN("3"), attribution },
+		});
+		const report = formatReport(snapshot, plan, undefined);
+		expect(report).to.include(
+			`== Real drift: complete history, stored balance differs\n  1 accounts, stored minus recomputed 3.0 BAN in total\n  left out: 1 accounts with incomplete history, 0 unrecovered unwraps and 0 unreferenced audits that name no account\n  ${BOB} stored 5.0 BAN, recomputed 2.0 BAN, difference 3.0 BAN\n`
+		);
+		expect(report).to.include(
+			`  deposit: ${ATTRIBUTED}: 1\n  audit:ORPHAN ${ALICE} deposit: ${ATTRIBUTED}\n`
 		);
 	});
 

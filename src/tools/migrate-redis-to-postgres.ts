@@ -19,6 +19,12 @@ import {
 	recoverBanAddresses,
 	unwrapsWithoutBanAddress,
 } from "./migration/recoverBanAddresses";
+import {
+	ChainRecovery,
+	missingAudits,
+	recoverFromChain,
+} from "./migration/recoverAudits";
+import { bananoNodeRpc } from "./migration/bananoNode";
 import safeErrorMessage from "./migration/safeErrorMessage";
 
 const USAGE = `usage: yarn ledger:migrate-redis [--dry-run | --write | --verify] [options]
@@ -27,7 +33,7 @@ const USAGE = `usage: yarn ledger:migrate-redis [--dry-run | --write | --verify]
   --verify             compare the Redis and Postgres ledgers, write nothing
   --sample=N           compare the routes of N random accounts instead of all
   --skip-unknown-keys  record unknown Redis keys as discrepancies instead of refusing
-  --no-chain           don't look up missing unwrap BAN addresses on the chain
+  --no-chain           don't recover missing history from the chains (--write then refuses)
   --list=N             list at most N items per report section (default 50)`;
 
 type Mode = "dry-run" | "write" | "verify";
@@ -71,25 +77,70 @@ function parseOptions(args: string[]): Options | undefined {
 	};
 }
 
+function blockchainProvider(): ethers.providers.JsonRpcProvider {
+	return new ethers.providers.JsonRpcProvider(config.BlockchainJsonRpc, {
+		name: config.BlockchainNetworkName,
+		chainId: config.BlockchainNetworkChainId,
+	});
+}
+
+function assertChainSettings(): void {
+	const missing = Object.entries({
+		BANANO_NODE_RPC_HOST: config.BananoNodeRpcHost,
+		BANANO_USERS_DEPOSITS_HOT_WALLET: config.BananoUsersDepositsHotWallet,
+		BC_JSON_RPC_URL: config.BlockchainJsonRpc,
+		WBAN_CONTRACT_ADDRESS: config.WBANContractAddress,
+	})
+		.filter(([, value]) => !value)
+		.map(([name]) => name);
+	if (missing.length > 0) {
+		throw new Error(
+			`Recovering history from the chains needs ${missing.join(
+				", "
+			)}, or pass --no-chain`
+		);
+	}
+}
+
 async function recoveredBanAddresses(
 	snapshot: LedgerSnapshot,
 	options: Options
 ): Promise<Map<string, string>> {
 	const unwraps = unwrapsWithoutBanAddress(snapshot);
-	if (unwraps.length === 0 || !options.chain || !config.BlockchainJsonRpc) {
+	if (unwraps.length === 0 || !options.chain) {
 		return new Map();
 	}
 	console.log(
 		`Looking up the BAN address of ${unwraps.length} unwraps on the chain...`
 	);
-	const provider = new ethers.providers.JsonRpcProvider(
-		config.BlockchainJsonRpc,
-		{
-			name: config.BlockchainNetworkName,
-			chainId: config.BlockchainNetworkChainId,
-		}
+	return recoverBanAddresses(
+		blockchainProvider(),
+		config.WBANContractAddress,
+		unwraps
 	);
-	return recoverBanAddresses(provider, config.WBANContractAddress, unwraps);
+}
+
+async function chainRecovery(
+	snapshot: LedgerSnapshot,
+	options: Options
+): Promise<ChainRecovery | undefined> {
+	if (!options.chain) {
+		return undefined;
+	}
+	console.log(
+		`Recovering ${
+			missingAudits(snapshot).length
+		} history entries without an audit hash from the chains...`
+	);
+	return recoverFromChain(
+		{
+			node: bananoNodeRpc(config.BananoNodeRpcHost),
+			hotWallet: config.BananoUsersDepositsHotWallet,
+			receipts: blockchainProvider(),
+			contractAddress: config.WBANContractAddress,
+		},
+		snapshot
+	);
 }
 
 async function describeTarget(db: Database): Promise<TargetState> {
@@ -152,9 +203,13 @@ async function run(options: Options): Promise<boolean> {
 	const pool = config.DatabaseHost ? new Pool(poolConfigFromEnv()) : undefined;
 	const db = pool && createDatabase(pool);
 	try {
+		if (options.chain) {
+			assertChainSettings();
+		}
 		const snapshot = await readSnapshot(redis);
 		const plan = planMigration(snapshot, {
 			recoveredBanAddresses: await recoveredBanAddresses(snapshot, options),
+			chainRecovery: await chainRecovery(snapshot, options),
 			skipUnknownKeys: options.skipUnknownKeys,
 		});
 		console.log(
@@ -186,14 +241,18 @@ async function run(options: Options): Promise<boolean> {
 	}
 }
 
+function exitAfterOutput(code: number): void {
+	process.stdout.write("", () => process.exit(code));
+}
+
 const options = parseOptions(process.argv.slice(2));
 if (!options) {
 	console.log(USAGE);
 	process.exit(2);
 }
 run(options)
-	.then((ok) => process.exit(ok ? 0 : 1))
+	.then((ok) => exitAfterOutput(ok ? 0 : 1))
 	.catch((err) => {
 		console.error(safeErrorMessage(err));
-		process.exit(1);
+		exitAfterOutput(1);
 	});

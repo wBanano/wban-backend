@@ -14,6 +14,7 @@ import {
 } from "../../storage/postgres/history";
 import { BALANCE_MISMATCH } from "../../storage/postgres/LedgerHealth";
 import { Claim, HistoryKind, LedgerSnapshot, ScoredMember } from "./snapshot";
+import { ChainRecovery, recoveryKey } from "./recoverAudits";
 
 export type PlannedEntry = typeof ledgerEntries.$inferInsert & {
 	banAddress: string;
@@ -36,6 +37,7 @@ export type BalanceComparison = {
 	stored: string;
 	recomputed: string;
 	hasBalanceKey: boolean;
+	historyComplete: boolean;
 };
 
 export type MigrationPlan = {
@@ -55,11 +57,14 @@ export type MigrationPlan = {
 		banAddressesWithSeveralClaims: number;
 		blockchainAddressesWithSeveralClaims: number;
 		pendingClaimsMigrated: number;
+		unrecoveredWithoutAccount: number;
+		orphansWithoutAccount: number;
 	};
 };
 
 export type PlanOptions = {
 	recoveredBanAddresses?: Map<string, string>;
+	chainRecovery?: ChainRecovery;
 	skipUnknownKeys?: boolean;
 };
 
@@ -122,17 +127,10 @@ function blockchainAddressOf(
 
 type TimestampOddity = { type: string; oddity: string };
 
-function timestampOddity(
+function scoreOddity(
 	kind: HistoryKind,
-	score: number,
-	audit: Record<string, string>
+	score: number
 ): TimestampOddity | undefined {
-	if (audit.timestamp !== String(score)) {
-		return {
-			type: "audit timestamp differs from score",
-			oddity: `audit timestamp ${audit.timestamp}, score ${score}`,
-		};
-	}
 	if (kind === "swap_to_ban" && isMilliseconds(score)) {
 		return {
 			type: "unwrap score in milliseconds",
@@ -151,6 +149,33 @@ function timestampOddity(
 	return undefined;
 }
 
+function timestampOddity(
+	kind: HistoryKind,
+	score: number,
+	audit: Record<string, string>
+): TimestampOddity | undefined {
+	if (audit.timestamp !== String(score)) {
+		return {
+			type: "audit timestamp differs from score",
+			oddity: `audit timestamp ${audit.timestamp}, score ${score}`,
+		};
+	}
+	return scoreOddity(kind, score);
+}
+
+export function historyRowOf(entry: PlannedEntry): HistoryRow {
+	return {
+		kind: entry.kind,
+		banAddress: entry.banAddress,
+		amount: entry.amount,
+		ref: entry.ref,
+		blockchainAddress: entry.blockchainAddress ?? null,
+		uuid: entry.uuid ?? null,
+		occurredAt: entry.occurredAt,
+		legacyAudit: null,
+	};
+}
+
 class Planner {
 	private snapshot: LedgerSnapshot;
 
@@ -159,6 +184,8 @@ class Planner {
 	private plan: MigrationPlan;
 
 	private referencedAudits = new Set<string>();
+
+	private incompleteAccounts = new Set<string>();
 
 	constructor(snapshot: LedgerSnapshot, options: PlanOptions) {
 		this.snapshot = snapshot;
@@ -180,6 +207,8 @@ class Planner {
 				banAddressesWithSeveralClaims: 0,
 				blockchainAddressesWithSeveralClaims: 0,
 				pendingClaimsMigrated: 0,
+				unrecoveredWithoutAccount: 0,
+				orphansWithoutAccount: 0,
 			},
 		};
 	}
@@ -260,7 +289,7 @@ class Planner {
 		this.referencedAudits.add(member);
 		const audit = this.snapshot.audits.get(member);
 		if (!audit || Object.keys(audit).length === 0) {
-			this.block("missing_audit", key, `${member} has no audit hash`);
+			this.planRecoveredEntry(kind, owner, scored);
 			return;
 		}
 		if (!/^\d+$/.test(audit.amount ?? "")) {
@@ -308,22 +337,74 @@ class Planner {
 		this.plan.entries.push(entry);
 	}
 
+	private planRecoveredEntry(
+		kind: HistoryKind,
+		owner: string,
+		scored: ScoredMember
+	): void {
+		const { member, score } = scored;
+		const key = `${ZSET_PREFIX[kind]}${owner}`;
+		const recovery = this.options.chainRecovery?.audits;
+		const id = recoveryKey(kind, member);
+		const failure = recovery?.unrecovered.get(id);
+		if (failure) {
+			this.recordUnrecovered(kind, owner, scored, failure);
+			return;
+		}
+		const recovered = recovery?.recovered.get(id);
+		if (!recovered) {
+			this.block("missing_audit", key, `${member} has no audit hash`);
+			return;
+		}
+		const oddity = scoreOddity(kind, score);
+		if (oddity) {
+			this.record({
+				kind: "timestamp_oddity",
+				banAddress: recovered.banAddress,
+				redisKey: key,
+				details: { ref: member, ...oddity },
+			});
+		}
+		this.plan.entries.push({
+			banAddress: recovered.banAddress,
+			kind,
+			amount: recovered.amount,
+			ref: member,
+			blockchainAddress: kind === "swap_to_ban" ? owner : null,
+			uuid: null,
+			status: kind === "withdrawal" ? "sent" : null,
+			requestTimestamp: kind === "withdrawal" ? score : null,
+			occurredAt: occurredAt(kind, score),
+			recoveredFrom: recovered.source,
+		});
+	}
+
+	private recordUnrecovered(
+		kind: HistoryKind,
+		owner: string,
+		{ member, score }: ScoredMember,
+		failure: { reason: string; detail?: string }
+	): void {
+		const banAddress = kind === "swap_to_ban" ? undefined : owner;
+		if (banAddress) {
+			this.incompleteAccounts.add(banAddress);
+		} else {
+			this.plan.stats.unrecoveredWithoutAccount += 1;
+		}
+		this.record({
+			kind: "unrecovered_audit",
+			banAddress,
+			redisKey: `${ZSET_PREFIX[kind]}${owner}`,
+			details: { kind, ref: member, score, ...failure },
+		});
+	}
+
 	private keepRedisRendering(
 		entry: PlannedEntry,
 		audit: Record<string, string>
 	): void {
 		const redisItem = redisHistoryItem(entry.kind, entry.ref, audit);
-		const row: HistoryRow = {
-			kind: entry.kind,
-			banAddress: entry.banAddress,
-			amount: entry.amount,
-			ref: entry.ref,
-			blockchainAddress: entry.blockchainAddress ?? null,
-			uuid: entry.uuid ?? null,
-			occurredAt: entry.occurredAt,
-			legacyAudit: null,
-		};
-		const canonical = historyItem(row);
+		const canonical = historyItem(historyRowOf(entry));
 		if (isDeepStrictEqual(canonical, redisItem)) {
 			return;
 		}
@@ -379,10 +460,19 @@ class Planner {
 			if (this.referencedAudits.has(ref)) {
 				return;
 			}
+			const attribution = this.options.chainRecovery?.orphans.get(ref);
+			const banAddress =
+				attribution?.banAddress ?? audit.banAddress?.toLowerCase();
+			if (banAddress) {
+				this.incompleteAccounts.add(banAddress);
+			} else {
+				this.plan.stats.orphansWithoutAccount += 1;
+			}
 			this.record({
 				kind: "orphan_audit",
+				banAddress,
 				redisKey: `audit:${ref}`,
-				details: audit,
+				details: attribution ? { ...audit, attribution } : audit,
 			});
 		});
 	}
@@ -412,6 +502,7 @@ class Planner {
 				stored,
 				recomputed: history,
 				hasBalanceKey: this.snapshot.balances.has(banAddress),
+				historyComplete: !this.incompleteAccounts.has(banAddress),
 			});
 			if (BigNumber.from(stored).isNegative()) {
 				this.record({

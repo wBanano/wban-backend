@@ -36,6 +36,11 @@ export const withdrawalStatus = pgEnum("withdrawal_status", [
 
 export const claimStatus = pgEnum("claim_status", ["pending", "confirmed"]);
 
+export const recoverySource = pgEnum("recovery_source", [
+	"banano_node",
+	"swap_to_ban_event",
+]);
+
 export const chainMeta = pgTable(
 	"chain_meta",
 	{
@@ -78,6 +83,7 @@ export const ledgerEntries = pgTable(
 		requestTimestamp: bigint("request_timestamp", { mode: "number" }),
 		occurredAt: timestamptz("occurred_at").notNull(),
 		legacyAudit: jsonb("legacy_audit").$type<Record<string, string>>(),
+		recoveredFrom: recoverySource("recovered_from"),
 		createdAt: timestamptz("created_at").notNull().defaultNow(),
 		updatedAt: timestamptz("updated_at").notNull().defaultNow(),
 	},

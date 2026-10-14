@@ -8,7 +8,10 @@ import { RedisUsersDepositsStorage } from "../../storage/RedisUsersDepositsStora
 import { PostgresUsersDepositsStorage } from "../../storage/PostgresUsersDepositsStorage";
 import { UsersDepositsStorage } from "../../storage/UsersDepositsStorage";
 import { LedgerMarker } from "../../storage/LedgerMarker";
-import { MigrationPlan } from "./plan";
+import { HistoryItem, historyItem } from "../../storage/postgres/history";
+import { MigrationPlan, PlannedEntry, historyRowOf } from "./plan";
+import { HistoryKind } from "./snapshot";
+import { recoveryKey } from "./recoverAudits";
 import { countTargetRows } from "./write";
 
 export type Difference = {
@@ -21,6 +24,7 @@ export type Difference = {
 const NO_BAN_ADDRESS = "ban_none";
 const NO_BLOCKCHAIN_ADDRESS = "0x0000000000000000000000000000000000000000";
 const PARALLEL = 16;
+const HISTORY_LIMIT = 1000;
 
 function sampleOf<T>(items: T[], size: number | undefined): T[] {
 	if (size === undefined || size >= items.length) {
@@ -78,10 +82,26 @@ class Verifier {
 
 	private differences: Difference[] = [];
 
+	private gaps = new Map<string, PlannedEntry | undefined>();
+
 	constructor(redis: Redis, db: Database, plan: MigrationPlan) {
 		this.redis = redis;
 		this.db = db;
 		this.plan = plan;
+		plan.entries
+			.filter((entry) => entry.recoveredFrom)
+			.forEach((entry) =>
+				this.gaps.set(recoveryKey(entry.kind, entry.ref), entry)
+			);
+		plan.discrepancies
+			.filter((discrepancy) => discrepancy.kind === "unrecovered_audit")
+			.forEach((discrepancy) => {
+				const { kind, ref } = discrepancy.details as {
+					kind: HistoryKind;
+					ref: string;
+				};
+				this.gaps.set(recoveryKey(kind, ref), undefined);
+			});
 		this.redisLedger = new RedisUsersDepositsStorage(redis);
 		this.postgresLedger = new PostgresUsersDepositsStorage(
 			db,
@@ -99,6 +119,42 @@ class Verifier {
 			return;
 		}
 		this.differences.push({ check, subject, redis, postgres });
+	}
+
+	private async compareHistory(
+		check: string,
+		subject: string,
+		{ kind, key }: { kind: HistoryKind; key: string },
+		redisItems: HistoryItem[],
+		postgresItems: HistoryItem[]
+	): Promise<void> {
+		const members = await this.redis.zrevrangebyscore(
+			key,
+			"+inf",
+			"-inf",
+			"LIMIT",
+			0,
+			HISTORY_LIMIT
+		);
+		if (!members.some((member) => this.gaps.has(recoveryKey(kind, member)))) {
+			this.compare(check, subject, redisItems, postgresItems);
+			return;
+		}
+		const expected = members.flatMap((member, index) => {
+			const id = recoveryKey(kind, member);
+			if (!this.gaps.has(id)) {
+				return [redisItems[index]];
+			}
+			const recovered = this.gaps.get(id);
+			return recovered ? [historyItem(historyRowOf(recovered))] : [];
+		});
+		const windowIsComplete = members.length < HISTORY_LIMIT;
+		this.compare(
+			check,
+			subject,
+			expected,
+			windowIsComplete ? postgresItems : postgresItems.slice(0, expected.length)
+		);
 	}
 
 	async run(sample?: number): Promise<Difference[]> {
@@ -210,30 +266,34 @@ class Verifier {
 				await this.postgresLedger.getUserAvailableBalance(banAddress)
 			)
 		);
-		this.compare(
+		await this.compareHistory(
 			"deposits",
 			banAddress,
+			{ kind: "deposit", key: `deposits:${banAddress}` },
 			await this.redisLedger.getDeposits(banAddress),
 			await this.postgresLedger.getDeposits(banAddress)
 		);
-		this.compare(
+		await this.compareHistory(
 			"withdrawals",
 			banAddress,
+			{ kind: "withdrawal", key: `withdrawals:${banAddress}` },
 			await this.redisLedger.getWithdrawals(banAddress),
 			await this.postgresLedger.getWithdrawals(banAddress)
 		);
-		this.compare(
+		await this.compareHistory(
 			"swaps by BAN address",
 			banAddress,
+			{ kind: "swap_to_wban", key: `swaps:ban-to-wban:${banAddress}` },
 			await this.redisLedger.getSwaps(NO_BLOCKCHAIN_ADDRESS, banAddress),
 			await this.postgresLedger.getSwaps(NO_BLOCKCHAIN_ADDRESS, banAddress)
 		);
 	}
 
 	private async compareUnwraps(blockchainAddress: string): Promise<void> {
-		this.compare(
+		await this.compareHistory(
 			"swaps by blockchain address",
 			blockchainAddress,
+			{ kind: "swap_to_ban", key: `swaps:wban-to-ban:${blockchainAddress}` },
 			await this.redisLedger.getSwaps(blockchainAddress, NO_BAN_ADDRESS),
 			await this.postgresLedger.getSwaps(blockchainAddress, NO_BAN_ADDRESS)
 		);

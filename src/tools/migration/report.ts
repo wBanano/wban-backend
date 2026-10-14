@@ -1,6 +1,11 @@
 import { BigNumber, ethers } from "ethers";
 import { LedgerSnapshot } from "./snapshot";
-import { BalanceComparison, Discrepancy, MigrationPlan } from "./plan";
+import {
+	BalanceComparison,
+	BlockingIssue,
+	Discrepancy,
+	MigrationPlan,
+} from "./plan";
 
 export type TargetState = {
 	schema: string;
@@ -39,8 +44,102 @@ function oddityGroup(discrepancy: Discrepancy): string {
 	return `${discrepancy.redisKey?.split(":")[0]} ${type}`;
 }
 
+function historyType(issue: BlockingIssue): string {
+	return issue.key.split(":").slice(0, -1).join(":");
+}
+
+function auditType(discrepancy: Discrepancy): string {
+	return String((discrepancy.details as { type?: string }).type);
+}
+
+function countLines<T>(items: T[], key: (item: T) => string): string[] {
+	return countsBy(items, key).map(([group, count]) => `  ${group}: ${count}`);
+}
+
 function discrepanciesOf(plan: MigrationPlan, kind: string): Discrepancy[] {
 	return plan.discrepancies.filter((discrepancy) => discrepancy.kind === kind);
+}
+
+type UnrecoveredDetails = {
+	kind: string;
+	ref: string;
+	reason: string;
+	detail?: string;
+};
+
+type AttributionDetails = {
+	type: string;
+	attribution?: { outcome: string; detail?: string };
+};
+
+function recoveryLines(plan: MigrationPlan, limit: number): string[] {
+	const unrecovered = discrepanciesOf(plan, "unrecovered_audit");
+	const detailsOf = (d: Discrepancy) => d.details as UnrecoveredDetails;
+	return [
+		...countLines(
+			plan.entries.filter((entry) => entry.recoveredFrom),
+			(entry) => `recovered ${entry.kind} from ${entry.recoveredFrom}`
+		),
+		...countLines(
+			unrecovered,
+			(d) => `not recovered ${detailsOf(d).kind}: ${detailsOf(d).reason}`
+		),
+		...listed(
+			unrecovered,
+			(d) =>
+				`${d.redisKey} ${detailsOf(d).ref}: ${detailsOf(d).reason}${
+					detailsOf(d).detail ? ` (${detailsOf(d).detail})` : ""
+				}`,
+			limit
+		),
+	];
+}
+
+function attributionLines(plan: MigrationPlan, limit: number): string[] {
+	const attributed = discrepanciesOf(plan, "orphan_audit").filter(
+		(d) => (d.details as AttributionDetails).attribution
+	);
+	const outcomeOf = (d: Discrepancy) => {
+		const { type, attribution } = d.details as AttributionDetails;
+		return `${type}: ${attribution?.outcome}`;
+	};
+	return [
+		...countLines(attributed, outcomeOf),
+		...listed(
+			attributed,
+			(d) => {
+				const detail = (d.details as AttributionDetails).attribution?.detail;
+				return `${d.redisKey} ${d.banAddress ?? "no account"} ${outcomeOf(d)}${
+					detail ? ` (${detail})` : ""
+				}`;
+			},
+			limit
+		),
+	];
+}
+
+function balanceLine(b: BalanceComparison): string {
+	return `${b.banAddress} stored ${BAN(b.stored)}${
+		b.hasBalanceKey ? "" : " (no ban-balance key)"
+	}, recomputed ${BAN(b.recomputed)}, difference ${BAN(
+		BigNumber.from(b.stored).sub(b.recomputed)
+	)}`;
+}
+
+function driftLines(plan: MigrationPlan, limit: number): string[] {
+	const drift = plan.balances.filter(
+		(b) => b.historyComplete && b.stored !== b.recomputed
+	);
+	const incomplete = plan.balances.filter((b) => !b.historyComplete).length;
+	const net = drift.reduce(
+		(sum, b) => sum.add(b.stored).sub(b.recomputed),
+		BigNumber.from(0)
+	);
+	return [
+		`  ${drift.length} accounts, stored minus recomputed ${BAN(net)} in total`,
+		`  left out: ${incomplete} accounts with incomplete history, ${plan.stats.unrecoveredWithoutAccount} unrecovered unwraps and ${plan.stats.orphansWithoutAccount} unreferenced audits that name no account`,
+		...listed(drift, balanceLine, limit),
+	];
 }
 
 function balanceLines(plan: MigrationPlan, limit: number): string[] {
@@ -54,16 +153,7 @@ function balanceLines(plan: MigrationPlan, limit: number): string[] {
 		`  sum stored ${BAN(total((b) => b.stored))}, sum recomputed ${BAN(
 			total((b) => b.recomputed)
 		)}`,
-		...listed(
-			mismatches,
-			(b) =>
-				`${b.banAddress} stored ${BAN(b.stored)}${
-					b.hasBalanceKey ? "" : " (no ban-balance key)"
-				}, recomputed ${BAN(b.recomputed)}, difference ${BAN(
-					BigNumber.from(b.stored).sub(b.recomputed)
-				)}`,
-			limit
-		),
+		...listed(mismatches, balanceLine, limit),
 	];
 }
 
@@ -96,6 +186,10 @@ export function formatReport(
 	limit = 50
 ): string {
 	const { stats } = plan;
+	const missingAudits = plan.blocking.filter(
+		(issue) => issue.kind === "missing_audit"
+	);
+	const orphanAudits = discrepanciesOf(plan, "orphan_audit");
 	const lines = [
 		"Redis to Postgres ledger migration report",
 		...section(
@@ -127,6 +221,10 @@ export function formatReport(
 			balanceLines(plan, limit)
 		),
 		...section(
+			"Real drift: complete history, stored balance differs",
+			driftLines(plan, limit)
+		),
+		...section(
 			`Accounts for the independent check (${LARGEST_ACCOUNTS} largest, ${RANDOM_ACCOUNTS} random)`,
 			accountsForIndependentCheck(plan).map((line) => `  ${line}`)
 		),
@@ -138,22 +236,27 @@ export function formatReport(
 				limit
 			)
 		),
-		...section(
-			"History entries without an audit hash",
-			listed(
-				plan.blocking.filter((issue) => issue.kind === "missing_audit"),
+		...section("History entries without an audit hash", [
+			...countLines(missingAudits, historyType),
+			...listed(
+				missingAudits,
 				(issue) => `${issue.key}: ${issue.detail}`,
 				limit
-			)
-		),
+			),
+		]),
+		...section("History recovered from the chain", recoveryLines(plan, limit)),
 		...section(
-			"Audit hashes nobody references",
-			listed(
-				discrepanciesOf(plan, "orphan_audit"),
+			"Unreferenced deposit and withdrawal audits, attributed through the node",
+			attributionLines(plan, limit)
+		),
+		...section("Audit hashes nobody references", [
+			...countLines(orphanAudits, auditType),
+			...listed(
+				orphanAudits,
 				(d) => `${d.redisKey} ${JSON.stringify(d.details)}`,
 				limit
-			)
-		),
+			),
+		]),
 		...section(
 			"Duplicate refs",
 			listed(

@@ -2,17 +2,23 @@ import chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 import IORedis, { Redis } from "ioredis";
 import { ethers } from "ethers";
-import { eq, sql } from "drizzle-orm";
+import { eq, isNotNull, sql } from "drizzle-orm";
 import { UsersDepositsService } from "../../../src/services/UsersDepositsService";
 import { RedisUsersDepositsStorage } from "../../../src/storage/RedisUsersDepositsStorage";
 import { chainIdentityFromConfig } from "../../../src/storage/postgres/database";
-import { accounts, chainMeta } from "../../../src/storage/postgres/schema";
+import {
+	accounts,
+	chainMeta,
+	ledgerEntries,
+} from "../../../src/storage/postgres/schema";
+import { bananoBlockLink } from "../../../src/storage/postgres/history";
 import { LedgerHealth } from "../../../src/storage/postgres/LedgerHealth";
 import { readSnapshot } from "../../../src/tools/migration/snapshot";
 import { planMigration } from "../../../src/tools/migration/plan";
 import { writePlan } from "../../../src/tools/migration/write";
 import { verifyMigration } from "../../../src/tools/migration/verify";
 import { formatReport } from "../../../src/tools/migration/report";
+import { WRAP_NOT_RECOVERABLE } from "../../../src/tools/migration/recoverAudits";
 import { PostgresHarness, postgresLedger } from "../../helpers/ledgers";
 
 const { expect } = chai;
@@ -141,7 +147,9 @@ describe("Redis to Postgres migration", () => {
 		expect(report).to.include(
 			"Blocking issues (--write refuses while there are any): 1"
 		);
-		expect(report).to.include("audit:0xorphan");
+		expect(report).to.include(
+			"== Audit hashes nobody references\n  deposit: 1\n  audit:0xorphan"
+		);
 	});
 
 	it("writes the plan, recomputes cleanly and verifies against Redis", async () => {
@@ -163,6 +171,72 @@ describe("Redis to Postgres migration", () => {
 		expect(
 			await ledger.storage.getBanAddressesForBlockchainAddress(WALLET)
 		).to.deep.equal([ALICE]);
+	});
+
+	it("writes history recovered from the chains and verifies it against the gaps in Redis", async () => {
+		await seed.zadd(`deposits:${ALICE}`, T0 + 50, "DLOST");
+		await seed.zadd(`deposits:${ALICE}`, T0 + 60, "DGONE");
+		await seed.zadd(`swaps:ban-to-wban:${ALICE}`, T0 + 70, "0xlostreceipt");
+		await seed.zadd(
+			`swaps:wban-to-ban:${WALLET.toLowerCase()}`,
+			(T0 + 80) * 1_000,
+			"0xlosttx"
+		);
+		const plan = planMigration(await readSnapshot(seed), {
+			recoveredBanAddresses: new Map([["0xlegacy", LEGACY]]),
+			chainRecovery: {
+				audits: {
+					recovered: new Map([
+						[
+							"deposit:DLOST",
+							{
+								banAddress: ALICE,
+								amount: BAN("6").toString(),
+								source: "banano_node",
+							},
+						],
+						[
+							"swap_to_ban:0xlosttx",
+							{
+								banAddress: ALICE,
+								amount: BAN("1").toString(),
+								source: "swap_to_ban_event",
+							},
+						],
+					]),
+					unrecovered: new Map([
+						["deposit:DGONE", { reason: "block not found on the node" }],
+						["swap_to_wban:0xlostreceipt", { reason: WRAP_NOT_RECOVERABLE }],
+					]),
+				},
+				orphans: new Map(),
+			},
+		});
+		expect(plan.blocking).to.deep.equal([]);
+		await writePlan(ledger.db, plan);
+		expect(await verifyMigration(seed, ledger.db, plan)).to.deep.equal([]);
+		expect(await new LedgerHealth(ledger.db).balanceMismatches()).to.deep.equal(
+			[]
+		);
+		expect((await ledger.storage.getDeposits(ALICE))[0]).to.deep.equal({
+			type: "deposit",
+			hash: "DLOST",
+			amount: BAN("6").toString(),
+			timestamp: String(T0 + 50),
+			link: bananoBlockLink("DLOST"),
+		});
+		expect(
+			await ledger.db
+				.select({
+					ref: ledgerEntries.ref,
+					recoveredFrom: ledgerEntries.recoveredFrom,
+				})
+				.from(ledgerEntries)
+				.where(isNotNull(ledgerEntries.recoveredFrom))
+		).to.have.deep.members([
+			{ ref: "DLOST", recoveredFrom: "banano_node" },
+			{ ref: "0xlosttx", recoveredFrom: "swap_to_ban_event" },
+		]);
 	});
 
 	it("refuses to write twice or with blocking issues", async () => {
