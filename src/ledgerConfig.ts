@@ -1,5 +1,6 @@
 import * as dotenv from "dotenv";
 import { Logger, TLogLevelName } from "tslog";
+import secretLogMasks from "./secretLogMasks";
 
 // dotenv.config();
 let path;
@@ -21,6 +22,7 @@ dotenv.config({ path });
 const log: Logger = new Logger({
 	name: "main",
 	minLevel: process.env.LOG_LEVEL as TLogLevelName,
+	maskAnyRegEx: secretLogMasks(process.env),
 });
 
 const STORAGE_BACKENDS = ["redis", "postgres"] as const;

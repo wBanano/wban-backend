@@ -159,7 +159,7 @@ class Banano {
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	private static wsConnectionFailed(err: any): void {
-		console.error(
+		config.Logger.error(
 			`Couldn't connect to Banano WebSocket API at ${config.BananoWebSocketsAPI}`,
 			err
 		);
@@ -217,7 +217,7 @@ class Banano {
 				// eslint-disable-next-line no-await-in-loop
 				await this.queuePendingTransaction(hash, transaction, scan);
 			} catch (err) {
-				console.error(err);
+				this.log.error(`Couldn't queue pending transaction ${hash}`, err);
 			}
 		}
 	}
