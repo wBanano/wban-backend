@@ -29,8 +29,8 @@ class RedisBlockchainScanQueue implements BlockchainScanQueue {
 					type: "exponential",
 					delay: 1_000,
 				},
-				removeOnComplete: 30_000,
-				removeOnFail: false,
+				removeOnComplete: 1_000,
+				removeOnFail: 1_000,
 			},
 		});
 		this.queueScheduler = new QueueScheduler(QUEUE_NAME, {
