@@ -6,6 +6,7 @@ import {
 	gaslessSwaps,
 	ledgerEntries,
 	migrationDiscrepancies,
+	refunds,
 	scanState,
 } from "../../storage/postgres/schema";
 import { MigrationPlan } from "./plan";
@@ -17,6 +18,7 @@ const TARGET_TABLES = {
 	gasless_swaps: gaslessSwaps,
 	scan_state: scanState,
 	migration_discrepancies: migrationDiscrepancies,
+	refunds,
 };
 
 const CHUNK = 500;

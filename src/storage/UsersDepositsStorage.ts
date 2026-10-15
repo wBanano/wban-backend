@@ -1,6 +1,10 @@
 import { BigNumber } from "ethers";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 
+type MintReceipt = { receipt: string; uuid: string };
+
+const FREE_SWAP_RESERVED = "reserved";
+
 interface UsersDepositsStorage {
 	assertReady(): Promise<void>;
 
@@ -34,6 +38,13 @@ interface UsersDepositsStorage {
 		banAddress: string,
 		hash: string
 	): Promise<boolean>;
+	reserveRefund(
+		depositHash: string,
+		banAddress: string,
+		amount: BigNumber
+	): Promise<boolean>;
+	storeRefund(depositHash: string, sendHash: string): Promise<void>;
+	hasRefund(depositHash: string): Promise<boolean>;
 	reserveUserWithdrawal(
 		banAddress: string,
 		amount: BigNumber,
@@ -58,6 +69,10 @@ interface UsersDepositsStorage {
 		receipt: string,
 		uuid: string
 	): Promise<void>;
+	getSwapToWBan(
+		banAddress: string,
+		timestamp: number
+	): Promise<MintReceipt | undefined>;
 	storeUserSwapToBan(swap: SwapWBANToBan): Promise<void>;
 	swapToBanWasAlreadyDone(swap: SwapWBANToBan): Promise<boolean>;
 
@@ -72,7 +87,9 @@ interface UsersDepositsStorage {
 	getSwaps(blockchainAddress: string, banAddress: string): Promise<Array<any>>;
 
 	isFreeSwapAlreadyDone(from: string): Promise<boolean>;
+	reserveFreeSwap(from: string): Promise<boolean>;
+	releaseFreeSwap(from: string): Promise<void>;
 	storeFreeSwap(from: string, txnId: string): Promise<void>;
 }
 
-export { UsersDepositsStorage };
+export { UsersDepositsStorage, MintReceipt, FREE_SWAP_RESERVED };

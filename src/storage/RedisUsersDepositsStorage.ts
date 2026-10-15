@@ -2,7 +2,11 @@ import { Logger } from "tslog";
 import IORedis, { Redis } from "ioredis";
 import Redlock from "redlock";
 import { BigNumber, ethers } from "ethers";
-import { UsersDepositsStorage } from "./UsersDepositsStorage";
+import {
+	FREE_SWAP_RESERVED,
+	MintReceipt,
+	UsersDepositsStorage,
+} from "./UsersDepositsStorage";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 import config from "../ledgerConfig";
 import { LedgerMarker } from "./LedgerMarker";
@@ -319,6 +323,36 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 		return isAlreadyStored === 1;
 	}
 
+	async reserveRefund(): Promise<boolean> {
+		await this.marker.assertOnRedis();
+		return true;
+	}
+
+	async storeRefund(depositHash: string, sendHash: string): Promise<void> {
+		this.log.info(`Refunded deposit ${depositHash} with ${sendHash}`);
+	}
+
+	// eslint-disable-next-line class-methods-use-this
+	async hasRefund(): Promise<boolean> {
+		return false;
+	}
+
+	async getSwapToWBan(
+		banAddress: string,
+		timestamp: number
+	): Promise<MintReceipt | undefined> {
+		const [receipt] = await this.redis.zrangebyscore(
+			`swaps:ban-to-wban:${banAddress.toLowerCase()}`,
+			timestamp,
+			timestamp
+		);
+		if (!receipt) {
+			return undefined;
+		}
+		const uuid = await this.redis.hget(`audit:${receipt}`, "uuid");
+		return { receipt, uuid: uuid ?? "" };
+	}
+
 	async storeUserSwapToWBan(
 		_banAddress: string,
 		_blockchainAddress: string,
@@ -529,6 +563,24 @@ class RedisUsersDepositsStorage implements UsersDepositsStorage {
 			`swaps:gasless:${from.toLowerCase()}`
 		);
 		return txnId !== null;
+	}
+
+	async reserveFreeSwap(from: string): Promise<boolean> {
+		await this.marker.assertOnRedis();
+		const reserved = await this.redis.set(
+			`swaps:gasless:${from.toLowerCase()}`,
+			FREE_SWAP_RESERVED,
+			"NX"
+		);
+		return reserved === "OK";
+	}
+
+	async releaseFreeSwap(from: string): Promise<void> {
+		await this.marker.assertOnRedis();
+		const key = `swaps:gasless:${from.toLowerCase()}`;
+		if ((await this.redis.get(key)) === FREE_SWAP_RESERVED) {
+			await this.redis.del(key);
+		}
 	}
 
 	async storeFreeSwap(from: string, txnId: string): Promise<void> {

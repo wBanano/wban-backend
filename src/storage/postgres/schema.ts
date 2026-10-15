@@ -36,6 +36,8 @@ export const withdrawalStatus = pgEnum("withdrawal_status", [
 
 export const claimStatus = pgEnum("claim_status", ["pending", "confirmed"]);
 
+export const refundStatus = pgEnum("refund_status", ["reserved", "sent"]);
+
 export const recoverySource = pgEnum("recovery_source", [
 	"banano_node",
 	"swap_to_ban_event",
@@ -162,6 +164,36 @@ export const scanState = pgTable(
 		updatedAt: timestamptz("updated_at").notNull().defaultNow(),
 	},
 	(t) => [check("scan_state_single_row", sql`${t.id} = 1`)]
+);
+
+export const refunds = pgTable(
+	"refunds",
+	{
+		depositHash: text("deposit_hash").primaryKey(),
+		banAddress: text("ban_address").notNull(),
+		amount: amount("amount").notNull(),
+		status: refundStatus("status").notNull().default("reserved"),
+		sendHash: text("send_hash"),
+		createdAt: timestamptz("created_at").notNull().defaultNow(),
+		updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+	},
+	(t) => [
+		index("refunds_reserved")
+			.on(t.createdAt)
+			.where(sql`${t.status} = 'reserved'`),
+		uniqueIndex("refunds_send_hash")
+			.on(t.sendHash)
+			.where(sql`${t.sendHash} is not null`),
+		check("refunds_amount_positive", sql`${t.amount} > 0`),
+		check(
+			"refunds_send_hash_once_sent",
+			sql`(${t.status} = 'sent') = (${t.sendHash} is not null)`
+		),
+		check(
+			"refunds_ban_address_lowercase",
+			sql`${t.banAddress} = lower(${t.banAddress})`
+		),
+	]
 );
 
 export const migrationDiscrepancies = pgTable("migration_discrepancies", {

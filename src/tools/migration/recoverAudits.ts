@@ -2,6 +2,7 @@ import { BigNumber } from "ethers";
 import { HistoryKind, LedgerSnapshot } from "./snapshot";
 import { BananoBlock, BananoNode } from "./bananoNode";
 import { TransactionReceipts, swapToBanEvents } from "./recoverBanAddresses";
+import isBanAddress from "../../models/requests/banAddress";
 
 export type RecoverySource = "banano_node" | "swap_to_ban_event";
 
@@ -46,7 +47,6 @@ export const ATTRIBUTED_IN_HISTORY =
 
 const RAW_PER_LEDGER_UNIT = BigNumber.from(10).pow(11);
 const NODE_BATCH = 200;
-const BAN_ADDRESS = /^ban_[13][13456789abcdefghijkmnopqrstuwxyz]{59}$/;
 
 type TransferKind = "deposit" | "withdrawal";
 
@@ -184,7 +184,7 @@ async function recoverUnwrap(
 		};
 	}
 	const [{ banAddress, amount }] = events;
-	if (!BAN_ADDRESS.test(banAddress)) {
+	if (!isBanAddress(banAddress)) {
 		return {
 			reason: "SwapToBan names no valid BAN address",
 			detail: banAddress,

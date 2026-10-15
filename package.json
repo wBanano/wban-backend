@@ -14,6 +14,7 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "ts-node src/tools/db-migrate.ts",
 		"ledger:withdrawal": "ts-node src/tools/ledger-withdrawal.ts",
+		"ledger:refund": "ts-node src/tools/ledger-refund.ts",
 		"ledger:migrate-redis": "ts-node src/tools/migrate-redis-to-postgres.ts"
 	},
 	"author": "Wrap That Potassium <wrap-that-potassium@protonmail.com>",

@@ -146,12 +146,16 @@ app.get("/health/ledger", async (req: Request, res: Response) => {
 		res.status(404).send();
 		return;
 	}
-	const { stuckWithdrawals, balanceMismatches } = await ledgerHealth.report();
+	const { stuckWithdrawals, stuckRefunds, balanceMismatches } =
+		await ledgerHealth.report();
 	const healthy =
-		stuckWithdrawals.length === 0 && balanceMismatches.length === 0;
+		stuckWithdrawals.length === 0 &&
+		stuckRefunds.length === 0 &&
+		balanceMismatches.length === 0;
 	res.status(healthy ? 200 : 503).send({
 		status: healthy ? "OK" : "Ledger needs attention",
 		stuckWithdrawals: stuckWithdrawals.length,
+		stuckRefunds: stuckRefunds.length,
 		balanceMismatches: balanceMismatches.length,
 	});
 });

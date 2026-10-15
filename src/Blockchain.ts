@@ -4,12 +4,15 @@ import {
 	WBANToken,
 	// eslint-disable-next-line camelcase
 	WBANToken__factory,
+	// eslint-disable-next-line camelcase
+	WBANTokenWithPermit__factory,
 } from "wban-smart-contract";
 import SwapWBANToBan from "./models/operations/SwapWBANToBan";
 import { SwapToBanEventListener } from "./models/listeners/SwapToBanEventListener";
 import { UsersDepositsService } from "./services/UsersDepositsService";
 import config from "./config";
 import BlockchainScanQueue from "./services/queuing/BlockchainScanQueue";
+import { isPermitSignedByOwner } from "./services/permit";
 
 class Blockchain {
 	private wBAN!: WBANToken;
@@ -116,6 +119,32 @@ class Blockchain {
 		};
 	}
 
+	async getWBanBalance(address: string): Promise<BigNumber> {
+		return this.wBAN.balanceOf(address);
+	}
+
+	async isPermitSignedBy(
+		owner: string,
+		spender: string,
+		value: BigNumber,
+		deadline: BigNumber,
+		signature: string
+	): Promise<boolean> {
+		const wBAN = WBANTokenWithPermit__factory.connect(
+			config.WBANContractAddress,
+			this.provider
+		);
+		const [domainSeparator, nonce] = await Promise.all([
+			wBAN.DOMAIN_SEPARATOR(),
+			wBAN.nonces(owner),
+		]);
+		return isPermitSignedByOwner(
+			domainSeparator,
+			{ owner, spender, value, nonce, deadline },
+			signature
+		);
+	}
+
 	async processBlocks(blockFrom: number, blockTo: number): Promise<string> {
 		const BLOCK_SLICE = 1_000;
 		try {
@@ -194,7 +223,7 @@ class Blockchain {
 	}
 
 	async getWalletBalance(): Promise<BigNumber> {
-		return this.wallet.getBalance('latest')
+		return this.wallet.getBalance("latest");
 	}
 
 	private async handleSwapToBanEvents(swap: SwapWBANToBan): Promise<void> {

@@ -9,6 +9,8 @@ import ProcessingQueue from "./services/queuing/ProcessingQueue";
 import BananoUserDeposit from "./models/operations/BananoUserDeposit";
 import { OperationsNames } from "./models/operations/Operation";
 
+type PendingTransaction = { amount: string; source: string };
+
 class Banano {
 	private usersDepositsHotWallet: string;
 
@@ -198,50 +200,64 @@ class Banano {
 			-1, // ask for all pending transactions
 			true // ask for wallet who sent the transaction
 		);
-		if (accountsPending.blocks && accountsPending.blocks[wallet]) {
-			const walletPendingTransactions = accountsPending.blocks[wallet];
-			const transactionsHashes = [...Object.keys(walletPendingTransactions)];
-			// eslint-disable-next-line no-restricted-syntax
-			for (const hash of transactionsHashes) {
-				try {
-					const transaction = walletPendingTransactions[hash];
-					this.log.debug(`Transaction is: ${JSON.stringify(transaction)}`);
-					const { amount } = transaction;
-					const sender = transaction.source;
-					// if amount deposited is only made of RAW, receive them and rekt the user :)
-					if (amount.length < 11) {
-						// eslint-disable-next-line no-await-in-loop
-						await this.receiveTransaction(hash);
-						return;
-					}
-					const banAmount: BigNumber = BigNumber.from(
-						amount.substring(0, amount.length - 11)
-					);
-					const timestamp = Date.now(); // TODO: replace this with local_timestamp from block_info
-					// filter transactions sent by the users deposits wallets
-					if (
-						sender === this.usersDepositsHotWallet ||
-						sender === this.usersDepositsColdWallet
-					) {
-						// eslint-disable-next-line no-await-in-loop
-						await this.receiveTransaction(hash);
-						return;
-					}
-					this.log.debug(
-						`Got missed transaction of ${ethers.utils.formatEther(
-							banAmount
-						)} BAN from ${sender} in transaction "${hash}"`
-					);
-					// record the user deposit
-					// eslint-disable-next-line no-await-in-loop
-					await this.queueUserDeposit(sender, banAmount, timestamp, hash);
-				} catch (err) {
-					console.error(err);
-				}
-			}
-		} else {
+		if (!accountsPending.blocks || !accountsPending.blocks[wallet]) {
 			this.log.debug("No pending transactions...");
+			return;
 		}
+		await this.queuePendingTransactions(accountsPending.blocks[wallet]);
+	}
+
+	async queuePendingTransactions(
+		pending: Record<string, PendingTransaction>
+	): Promise<void> {
+		const scan = { receivedDust: false };
+		// eslint-disable-next-line no-restricted-syntax
+		for (const [hash, transaction] of Object.entries(pending)) {
+			try {
+				// eslint-disable-next-line no-await-in-loop
+				await this.queuePendingTransaction(hash, transaction, scan);
+			} catch (err) {
+				console.error(err);
+			}
+		}
+	}
+
+	private async queuePendingTransaction(
+		hash: string,
+		transaction: PendingTransaction,
+		scan: { receivedDust: boolean }
+	): Promise<void> {
+		this.log.debug(`Transaction is: ${JSON.stringify(transaction)}`);
+		const { amount } = transaction;
+		const sender = transaction.source;
+		// if amount deposited is only made of RAW, receive them and rekt the user :)
+		const dust = amount.length < 11;
+		// filter transactions sent by the users deposits wallets
+		const ownWallet =
+			sender === this.usersDepositsHotWallet ||
+			sender === this.usersDepositsColdWallet;
+		if (ownWallet) {
+			await this.receiveTransaction(hash);
+			return;
+		}
+		if (dust) {
+			if (scan.receivedDust) {
+				return;
+			}
+			Object.assign(scan, { receivedDust: true });
+			await this.receiveTransaction(hash);
+			return;
+		}
+		const banAmount: BigNumber = BigNumber.from(
+			amount.substring(0, amount.length - 11)
+		);
+		const timestamp = Date.now(); // TODO: replace this with local_timestamp from block_info
+		this.log.debug(
+			`Got missed transaction of ${ethers.utils.formatEther(
+				banAmount
+			)} BAN from ${sender} in transaction "${hash}"`
+		);
+		await this.queueUserDeposit(sender, banAmount, timestamp, hash);
 	}
 
 	async queueUserDeposit(
@@ -267,6 +283,13 @@ class Banano {
 		this.log.info(
 			`Processing user deposit transaction "${hash}" from wallet "${sender}"`
 		);
+		if (await this.usersDepositsService.hasRefund(hash)) {
+			this.log.warn(
+				`Deposit "${hash}" from "${sender}" was already sent back, skipping it`
+			);
+			await this.receiveTransaction(hash);
+			return false;
+		}
 
 		// check if a pending claim is available
 		if (await this.usersDepositsService.hasPendingClaim(sender)) {
@@ -276,49 +299,60 @@ class Banano {
 
 		await this.receiveTransaction(hash);
 
+		const formattedAmount = ethers.utils.formatEther(amount);
 		// check if there is no valid claim
 		if (!(await this.usersDepositsService.isClaimed(sender))) {
-			const formattedAmount = ethers.utils.formatEther(amount);
 			this.log.warn(
 				`No claim were made for "${sender}". Sending back the ${formattedAmount} BAN deposited`
 			);
-			// send back the BAN!
-			try {
-				await this.sendBan(sender, amount);
-				return false;
-			} catch (err) {
-				this.log.error("Unexpected error", err);
-				throw err;
-			}
-		} else {
-			const formattedAmount = ethers.utils.formatEther(amount);
-			const number = Number.parseFloat(formattedAmount);
-			const rounded = Math.round(number * 100) / 100;
-			// check if the deposit has more than 2 decimals
-			if (number !== rounded) {
-				this.log.warn(
-					`Deposit has more than two decimals. Sending back the ${formattedAmount} BAN deposited by ${sender}`
-				);
-				// send back the BAN!
-				try {
-					await this.sendBan(sender, amount);
-					return false;
-				} catch (err) {
-					this.log.error("Unexpected error", err);
-					throw err;
-				}
-			} else {
-				// record the user deposit
-				await this.usersDepositsService.storeUserDeposit(
-					sender,
-					amount,
-					timestamp,
-					hash
-				);
-				await this.eventuallySendToColdWallet(amount);
-				return true;
-			}
+			await this.refund(sender, amount, hash);
+			return false;
 		}
+		const number = Number.parseFloat(formattedAmount);
+		const rounded = Math.round(number * 100) / 100;
+		// check if the deposit has more than 2 decimals
+		if (number !== rounded) {
+			this.log.warn(
+				`Deposit has more than two decimals. Sending back the ${formattedAmount} BAN deposited by ${sender}`
+			);
+			await this.refund(sender, amount, hash);
+			return false;
+		}
+		// record the user deposit
+		await this.usersDepositsService.storeUserDeposit(
+			sender,
+			amount,
+			timestamp,
+			hash
+		);
+		await this.eventuallySendToColdWallet(amount);
+		return true;
+	}
+
+	private async refund(
+		sender: string,
+		amount: BigNumber,
+		depositHash: string
+	): Promise<void> {
+		if (
+			!(await this.usersDepositsService.reserveRefund(
+				depositHash,
+				sender,
+				amount
+			))
+		) {
+			this.log.warn(
+				`Deposit "${depositHash}" from "${sender}" was already refunded or credited, not sending it back again`
+			);
+			return;
+		}
+		const sendHash = await this.sendBan(sender, amount);
+		if (!sendHash) {
+			throw new Error(
+				`Refunding deposit "${depositHash}" to "${sender}" returned no block hash, the refund stays reserved`
+			);
+		}
+		await this.usersDepositsService.storeRefund(depositHash, sendHash);
 	}
 
 	async receiveTransaction(hash: string): Promise<void> {

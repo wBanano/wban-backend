@@ -49,6 +49,9 @@ describe("Banano Service", () => {
 			const hash = "0xCAFEBABE";
 			depositsService.hasPendingClaim.withArgs(sender).resolves(false);
 			depositsService.isClaimed.withArgs(sender).resolves(false);
+			depositsService.reserveRefund
+				.withArgs(hash, sender, amount)
+				.resolves(true);
 
 			svc.receiveTransaction.resolves();
 			svc.sendBan.resolves("0xTHISROCKS");
@@ -60,6 +63,62 @@ describe("Banano Service", () => {
 			expect(svc.receiveTransaction).to.be.calledOnce;
 			// and sent back
 			expect(svc.sendBan).to.be.calledOnceWith(sender, amount);
+			expect(depositsService.storeRefund).to.be.calledOnceWith(
+				hash,
+				"0xTHISROCKS"
+			);
+		});
+
+		it("Skips a deposit that was already sent back", async () => {
+			const sender = "ban_sender";
+			const amount: BigNumber = ethers.utils.parseEther("1");
+			const hash = "0xCAFEBABE";
+			depositsService.hasRefund.withArgs(hash).resolves(true);
+			depositsService.hasPendingClaim.withArgs(sender).resolves(true);
+			depositsService.isClaimed.withArgs(sender).resolves(true);
+
+			expect(
+				await svc.processUserDeposit(sender, amount, Date.now(), hash)
+			).to.equal(false);
+
+			expect(depositsService.confirmClaim).to.not.have.been.called;
+			expect(svc.receiveTransaction).to.have.been.calledOnceWith(hash);
+			expect(depositsService.storeUserDeposit).to.not.have.been.called;
+			expect(svc.sendBan).to.not.have.been.called;
+		});
+
+		it("Doesn't send back a deposit whose refund was already reserved", async () => {
+			const sender = "ban_sender";
+			const amount: BigNumber = ethers.utils.parseEther("1");
+			const hash = "0xCAFEBABE";
+			depositsService.hasPendingClaim.withArgs(sender).resolves(false);
+			depositsService.isClaimed.withArgs(sender).resolves(false);
+			depositsService.reserveRefund.resolves(false);
+			svc.receiveTransaction.resolves();
+
+			expect(
+				await svc.processUserDeposit(sender, amount, Date.now(), hash)
+			).to.equal(false);
+
+			expect(svc.sendBan).to.not.have.been.called;
+			expect(depositsService.storeRefund).to.not.have.been.called;
+			expect(depositsService.storeUserDeposit).to.not.have.been.called;
+		});
+
+		it("Keeps the refund reserved when the send returns no block hash", async () => {
+			const sender = "ban_sender";
+			const amount: BigNumber = ethers.utils.parseEther("1");
+			const hash = "0xCAFEBABE";
+			depositsService.hasPendingClaim.withArgs(sender).resolves(false);
+			depositsService.isClaimed.withArgs(sender).resolves(false);
+			depositsService.reserveRefund.resolves(true);
+			svc.receiveTransaction.resolves();
+			svc.sendBan.resolves("");
+
+			await expect(
+				svc.processUserDeposit(sender, amount, Date.now(), hash)
+			).to.be.rejectedWith("the refund stays reserved");
+			expect(depositsService.storeRefund).to.not.have.been.called;
 		});
 
 		it("Sends back BAN deposits with more than two decimals", async () => {
@@ -68,6 +127,9 @@ describe("Banano Service", () => {
 			const hash = "0xCAFEBABE";
 			depositsService.hasPendingClaim.withArgs(sender).resolves(false);
 			depositsService.isClaimed.withArgs(sender).resolves(true);
+			depositsService.reserveRefund
+				.withArgs(hash, sender, amount)
+				.resolves(true);
 
 			svc.receiveTransaction.resolves();
 			svc.sendBan.resolves("0xTHISROCKS");
@@ -79,6 +141,10 @@ describe("Banano Service", () => {
 			expect(svc.receiveTransaction).to.be.calledOnce;
 			// and sent back
 			expect(svc.sendBan).to.be.calledOnceWith(sender, amount);
+			expect(depositsService.storeRefund).to.be.calledOnceWith(
+				hash,
+				"0xTHISROCKS"
+			);
 			// and have no deposit stored
 			expect(depositsService.storeUserDeposit).to.not.have.been.called;
 		});
@@ -140,6 +206,28 @@ describe("Banano Service", () => {
 				amount,
 				timestamp,
 				hash
+			);
+		});
+	});
+
+	describe("Missed deposits", () => {
+		it("receives own-wallet blocks, one dust block per run, and keeps queueing deposits", async () => {
+			svc.receiveTransaction.resolves();
+			const oneBan = `1${"0".repeat(29)}`;
+
+			await svc.queuePendingTransactions({
+				DUST: { amount: "5", source: "ban_dust" },
+				MORE_DUST: { amount: "6", source: "ban_dust" },
+				SELF: { amount: oneBan, source: hotWallet },
+				USER: { amount: oneBan, source: "ban_user" },
+			});
+
+			expect(svc.receiveTransaction).to.have.been.calledTwice;
+			expect(svc.receiveTransaction).to.have.been.calledWith("DUST");
+			expect(svc.receiveTransaction).to.have.been.calledWith("SELF");
+			expect(processingQueue.addBananoUserDeposit).to.have.been.calledOnce;
+			expect(processingQueue.addBananoUserDeposit.firstCall.args[0]).to.include(
+				{ sender: "ban_user", amount: "1.0", hash: "USER" }
 			);
 		});
 	});

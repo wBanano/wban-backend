@@ -21,6 +21,14 @@ describe("Ledger watchdog", () => {
 					reservedAt: new Date(0),
 				},
 			],
+			stuckRefunds: [
+				{
+					depositHash: "D1",
+					banAddress: "ban_1carol",
+					amount: "1",
+					reservedAt: new Date(0),
+				},
+			],
 			balanceMismatches: [
 				{ banAddress: "ban_1bob", balance: "2", expected: "1" },
 			],

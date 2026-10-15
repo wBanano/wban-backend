@@ -11,6 +11,7 @@ const TOOL_ENTRIES = [
 	"src/tools/migrate-redis-to-postgres.ts",
 	"src/tools/db-migrate.ts",
 	"src/tools/ledger-withdrawal.ts",
+	"src/tools/ledger-refund.ts",
 ];
 
 const TOOL_LIBRARIES = [
@@ -26,6 +27,10 @@ const TOOL_LIBRARIES = [
 	"src/tools/migration/safeErrorMessage.ts",
 	"src/storage/postgres/database.ts",
 	"src/storage/postgres/WithdrawalReservations.ts",
+	"src/storage/postgres/RefundReservations.ts",
+	"src/storage/postgres/recordedSends.ts",
+	"src/tools/reservationChecks.ts",
+	"src/models/requests/banAddress.ts",
 	"src/services/HotWalletSends.ts",
 ];
 

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { Database } from "./database";
+import { RefundReservations, ReservedRefund } from "./RefundReservations";
 import {
 	ReservedWithdrawal,
 	STUCK_AFTER_MINUTES,
@@ -16,6 +17,7 @@ export type BalanceMismatch = {
 
 export type LedgerHealthReport = {
 	stuckWithdrawals: ReservedWithdrawal[];
+	stuckRefunds: ReservedRefund[];
 	balanceMismatches: BalanceMismatch[];
 };
 
@@ -24,13 +26,20 @@ export class LedgerHealth {
 
 	private reservations: WithdrawalReservations;
 
+	private refunds: RefundReservations;
+
 	constructor(db: Database) {
 		this.db = db;
 		this.reservations = new WithdrawalReservations(db);
+		this.refunds = new RefundReservations(db);
 	}
 
 	async stuckWithdrawals(): Promise<ReservedWithdrawal[]> {
 		return this.reservations.list(STUCK_AFTER_MINUTES);
+	}
+
+	async stuckRefunds(): Promise<ReservedRefund[]> {
+		return this.refunds.list(STUCK_AFTER_MINUTES);
 	}
 
 	async balanceMismatches(): Promise<BalanceMismatch[]> {
@@ -65,6 +74,7 @@ export class LedgerHealth {
 	async report(): Promise<LedgerHealthReport> {
 		return {
 			stuckWithdrawals: await this.stuckWithdrawals(),
+			stuckRefunds: await this.stuckRefunds(),
 			balanceMismatches: await this.balanceMismatches(),
 		};
 	}

@@ -229,6 +229,7 @@ class Verifier {
 			gasless_swaps: this.plan.gasless.length,
 			scan_state: this.plan.lastBlockProcessed === undefined ? 0 : 1,
 			migration_discrepancies: this.plan.discrepancies.length,
+			refunds: 0,
 		};
 		Object.entries(expected).forEach(([table, count]) =>
 			this.compare("row count", table, count, counts[table])

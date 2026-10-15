@@ -15,6 +15,9 @@ import BlockchainScanQueue from "../../src/services/queuing/BlockchainScanQueue"
 import BananoUserWithdrawal from "../../src/models/operations/BananoUserWithdrawal";
 import config from "../../src/config";
 import { BananoWalletsBlacklist } from "../../src/services/BananoWalletsBlacklist";
+import { SinonStub, stub } from "sinon";
+// eslint-disable-next-line camelcase
+import { WBANGaslessSwap__factory } from "wban-smart-contract";
 
 const { expect } = chai;
 chai.use(sinonChai);
@@ -498,6 +501,179 @@ describe("Main Service", () => {
 				timestamp: Date.now(),
 			});
 			expect(depositsService.storeUserSwapToBan).to.not.have.been.called;
+		});
+	});
+
+	describe("Wraps", () => {
+		const from =
+			"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
+		const timestamp = 1_700_000_000_000;
+		const wallet = ethers.Wallet.createRandom();
+		const request = async () => ({
+			from,
+			amount: 5,
+			blockchainWallet: wallet.address,
+			timestamp,
+			signature: await wallet.signMessage(
+				`Swap 5 BAN for wBAN with BAN I deposited from my wallet "${from}"`
+			),
+		});
+
+		beforeEach(() => {
+			depositsService.hasClaim.withArgs(from, wallet.address).resolves(true);
+		});
+
+		it("returns the stored receipt when the same wrap request runs again", async () => {
+			depositsService.getSwapToWBan
+				.withArgs(from, timestamp)
+				.resolves({ receipt: "0xstored", uuid: "7" });
+			blockchain.getWBanBalance
+				.withArgs(wallet.address)
+				.resolves(BigNumber.from(3));
+			expect(await svc.processSwapToWBAN(await request())).to.deep.equal({
+				receipt: "0xstored",
+				uuid: "7",
+				wbanBalance: BigNumber.from(3),
+				gasless: false,
+				txnHash: "",
+			});
+			expect(blockchain.createMintReceipt).to.not.have.been.called;
+			expect(depositsService.storeUserSwapToWBan).to.not.have.been.called;
+		});
+
+		it("returns the receipt to mint by hand when the gasless step fails after the debit", async () => {
+			depositsService.getUserAvailableBalance
+				.withArgs(from)
+				.resolves(ethers.utils.parseEther("10"));
+			blockchain.createMintReceipt.resolves({
+				receipt: "0xnew",
+				uuid: "8",
+				wbanBalance: BigNumber.from(0),
+			});
+			depositsService.getSwaps.rejects(new Error("database down"));
+			expect(await svc.processSwapToWBAN(await request())).to.include({
+				receipt: "0xnew",
+				uuid: "8",
+				gasless: false,
+				txnHash: "",
+			});
+			expect(depositsService.storeUserSwapToWBan).to.have.been.calledOnce;
+		});
+	});
+
+	describe("Gasless swaps", () => {
+		const banWallet =
+			"ban_1o3k8868n6d1679iz6fcz1wwwaq9hek4ykd58wsj5bozb8gkf38pm7njrr1o";
+		const recipient = ethers.utils.getAddress(
+			"0xec410e9f2756c30be4682a7e29918082adc12b55"
+		);
+		const relayerEnabled = config.BlockchainRelayerEnabled;
+		let connect: SinonStub;
+		let relay: SinonStub;
+		let swap: Parameters<Service["processGaslessSwap"]>[0];
+
+		beforeEach(async () => {
+			config.BlockchainRelayerEnabled = true;
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(svc as any).relayerSigner = {
+				provider: { getBalance: async () => BigNumber.from(0) },
+			};
+			relay = stub().rejects(new Error("relayer unavailable"));
+			connect = stub(WBANGaslessSwap__factory, "connect").returns({
+				swapWBANToCrypto: relay,
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as any);
+			swap = {
+				banWallet,
+				recipient,
+				permit: {
+					amount: String(config.BlockchainGasLessBananoThreshold),
+					deadline: Math.floor(Date.now() / 1_000) + 1_800,
+					signature: await ethers.Wallet.createRandom().signMessage("permit"),
+				},
+				gasLimit: 100_000,
+				swapCallData: "0x",
+			};
+			depositsService.hasClaim.withArgs(banWallet, recipient).resolves(true);
+			blockchain.isPermitSignedBy.resolves(true);
+			depositsService.reserveFreeSwap.resolves(true);
+		});
+
+		afterEach(() => {
+			config.BlockchainRelayerEnabled = relayerEnabled;
+			connect.restore();
+		});
+
+		it("refuses a malformed BAN wallet before looking up claims", async () => {
+			await expect(
+				svc.processGaslessSwap({ ...swap, banWallet: "*" })
+			).to.be.rejectedWith("is not a BAN address");
+			expect(depositsService.hasClaim).to.not.have.been.called;
+			expect(connect).to.not.have.been.called;
+		});
+
+		it("refuses a BAN wallet the requester has no confirmed claim on", async () => {
+			depositsService.hasClaim.withArgs(banWallet, recipient).resolves(false);
+			await expect(svc.processGaslessSwap(swap)).to.be.rejectedWith(
+				"has no confirmed claim"
+			);
+			expect(depositsService.reserveFreeSwap).to.not.have.been.called;
+			expect(connect).to.not.have.been.called;
+		});
+
+		it("refuses a permit the requester didn't sign before reserving", async () => {
+			blockchain.isPermitSignedBy.resolves(false);
+			await expect(svc.processGaslessSwap(swap)).to.be.rejectedWith(
+				"permit isn't signed"
+			);
+			expect(depositsService.reserveFreeSwap).to.not.have.been.called;
+			expect(connect).to.not.have.been.called;
+		});
+
+		it("refuses amounts below the gasless threshold and expired permits", async () => {
+			await expect(
+				svc.processGaslessSwap({
+					...swap,
+					permit: { ...swap.permit, amount: "0.5" },
+				})
+			).to.be.rejectedWith("Gasless swaps start at");
+			await expect(
+				svc.processGaslessSwap({
+					...swap,
+					permit: { ...swap.permit, deadline: 1 },
+				})
+			).to.be.rejectedWith("permit has expired");
+			expect(depositsService.reserveFreeSwap).to.not.have.been.called;
+		});
+
+		it("refuses when the free swap was already reserved", async () => {
+			depositsService.reserveFreeSwap.resolves(false);
+			await expect(svc.processGaslessSwap(swap)).to.be.rejectedWith(
+				"already done a free swap"
+			);
+			expect(connect).to.not.have.been.called;
+		});
+
+		it("releases the free swap when the relayer refuses the transaction", async () => {
+			await expect(svc.processGaslessSwap(swap)).to.be.rejectedWith(
+				"relayer unavailable"
+			);
+			expect(depositsService.releaseFreeSwap).to.have.been.calledOnceWith(
+				banWallet
+			);
+			expect(depositsService.storeFreeSwap).to.not.have.been.called;
+		});
+
+		it("keeps the free swap once the transaction was submitted", async () => {
+			relay.resolves({ transactionId: "txn-1" });
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(svc as any).waitForRelayedTx = stub().rejects(new Error("reverted"));
+			await expect(svc.processGaslessSwap(swap)).to.be.rejectedWith("reverted");
+			expect(depositsService.storeFreeSwap).to.have.been.calledOnceWith(
+				banWallet,
+				"txn-1"
+			);
+			expect(depositsService.releaseFreeSwap).to.not.have.been.called;
 		});
 	});
 

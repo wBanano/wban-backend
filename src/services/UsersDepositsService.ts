@@ -1,7 +1,10 @@
 import { Logger } from "tslog";
 import { BigNumber } from "ethers";
 import config from "../config";
-import { UsersDepositsStorage } from "../storage/UsersDepositsStorage";
+import {
+	MintReceipt,
+	UsersDepositsStorage,
+} from "../storage/UsersDepositsStorage";
 import Withdrawal from "../models/operations/Withdrawal";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 
@@ -101,6 +104,26 @@ class UsersDepositsService {
 		);
 	}
 
+	async reserveRefund(
+		depositHash: string,
+		banAddress: string,
+		amount: BigNumber
+	): Promise<boolean> {
+		return this.usersDepositsStorage.reserveRefund(
+			depositHash,
+			banAddress,
+			amount
+		);
+	}
+
+	async storeRefund(depositHash: string, sendHash: string): Promise<void> {
+		return this.usersDepositsStorage.storeRefund(depositHash, sendHash);
+	}
+
+	async hasRefund(depositHash: string): Promise<boolean> {
+		return this.usersDepositsStorage.hasRefund(depositHash);
+	}
+
 	async reserveUserWithdrawal(
 		banAddress: string,
 		amount: BigNumber,
@@ -145,6 +168,13 @@ class UsersDepositsService {
 		);
 	}
 
+	async getSwapToWBan(
+		banWallet: string,
+		timestamp: number
+	): Promise<MintReceipt | undefined> {
+		return this.usersDepositsStorage.getSwapToWBan(banWallet, timestamp);
+	}
+
 	async getLastBlockchainBlockProcessed(): Promise<number> {
 		return this.usersDepositsStorage.getLastBlockchainBlockProcessed();
 	}
@@ -178,6 +208,14 @@ class UsersDepositsService {
 
 	async isFreeSwapAlreadyDone(from: string): Promise<boolean> {
 		return this.usersDepositsStorage.isFreeSwapAlreadyDone(from);
+	}
+
+	async reserveFreeSwap(from: string): Promise<boolean> {
+		return this.usersDepositsStorage.reserveFreeSwap(from);
+	}
+
+	async releaseFreeSwap(from: string): Promise<void> {
+		return this.usersDepositsStorage.releaseFreeSwap(from);
 	}
 
 	async storeFreeSwap(from: string, txnId: string): Promise<void> {

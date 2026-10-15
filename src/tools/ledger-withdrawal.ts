@@ -15,6 +15,7 @@ import {
 	matchingSends,
 } from "../services/HotWalletSends";
 import safeErrorMessage from "./migration/safeErrorMessage";
+import { assertNoLookalike, assertOldEnough } from "./reservationChecks";
 
 const HISTORY_COUNT = 1_000;
 
@@ -54,7 +55,7 @@ async function candidateSends(
 		);
 	}
 	const sends = matchingSends(history, reservation);
-	const recorded = await reservations.recordedWithdrawalHashes(
+	const recorded = await reservations.recordedSendHashes(
 		sends.map((send) => send.hash)
 	);
 	return sends.map((entry) => ({ entry, recorded: recorded.has(entry.hash) }));
@@ -74,7 +75,7 @@ function printCandidates(
 			`  ${entry.hash} at ${new Date(
 				entry.localTimestamp * 1_000
 			).toISOString()}${
-				recorded ? " (already recorded for another withdrawal)" : ""
+				recorded ? " (already recorded for another withdrawal or refund)" : ""
 			}`
 		)
 	);
@@ -118,8 +119,11 @@ async function confirm(
 		);
 	}
 	if (candidate.recorded) {
-		throw new Error(`${hash} is already recorded for another withdrawal`);
+		throw new Error(
+			`${hash} is already recorded for another withdrawal or refund`
+		);
 	}
+	assertNoLookalike(await reservations.otherOpenSends(reservation));
 	await reservations.confirm(reservation.id, candidate.entry.hash);
 	console.log(`Confirmed ${summary(reservation)} with ${candidate.entry.hash}`);
 }
@@ -130,6 +134,8 @@ async function release(
 	flags: string[]
 ): Promise<void> {
 	const reservation = await reservationOrFail(reservations, id);
+	assertOldEnough(reservation.reservedAt);
+	assertNoLookalike(await reservations.otherOpenSends(reservation));
 	const unrecorded = (await candidateSends(reservations, reservation)).filter(
 		({ recorded }) => !recorded
 	);

@@ -96,7 +96,7 @@ async function migrateOnce(db: Database): Promise<void> {
 
 export async function truncateLedger(db: Database): Promise<void> {
 	await db.execute(
-		sql`truncate chain_meta, accounts, ledger_entries, claims, gasless_swaps, scan_state, migration_discrepancies restart identity cascade`
+		sql`truncate chain_meta, accounts, ledger_entries, claims, gasless_swaps, scan_state, migration_discrepancies, refunds restart identity cascade`
 	);
 }
 

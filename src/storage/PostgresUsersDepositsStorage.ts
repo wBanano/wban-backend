@@ -1,7 +1,11 @@
 import { Logger } from "tslog";
 import { BigNumber, ethers } from "ethers";
 import { and, desc, eq, gt, or, sql, SQL } from "drizzle-orm";
-import { UsersDepositsStorage } from "./UsersDepositsStorage";
+import {
+	FREE_SWAP_RESERVED,
+	MintReceipt,
+	UsersDepositsStorage,
+} from "./UsersDepositsStorage";
 import SwapWBANToBan from "../models/operations/SwapWBANToBan";
 import InsufficientBalanceError from "../errors/InsufficientBalanceError";
 import config from "../ledgerConfig";
@@ -17,6 +21,7 @@ import {
 	claims,
 	gaslessSwaps,
 	ledgerEntries,
+	refunds,
 	scanState,
 } from "./postgres/schema";
 import {
@@ -203,7 +208,7 @@ class PostgresUsersDepositsStorage implements UsersDepositsStorage {
 		});
 		this.log.info(
 			`${
-				stored ? "Stored" : "Skipped already stored"
+				stored ? "Stored" : "Skipped already stored or refunded"
 			} user deposit from: ${banAddress.toLowerCase()}, amount: ${ethers.utils.formatEther(
 				amount
 			)} BAN, hash: ${hash}`
@@ -221,6 +226,69 @@ class PostgresUsersDepositsStorage implements UsersDepositsStorage {
 				eq(ledgerEntries.banAddress, banAddress.toLowerCase())
 			)
 		);
+	}
+
+	async reserveRefund(
+		depositHash: string,
+		banAddress: string,
+		amount: BigNumber
+	): Promise<boolean> {
+		return this.db.transaction(async (tx) => {
+			await PostgresUsersDepositsStorage.lockAccount(
+				tx,
+				banAddress.toLowerCase()
+			);
+			const credited = await tx
+				.select({ id: ledgerEntries.id })
+				.from(ledgerEntries)
+				.where(
+					and(
+						eq(ledgerEntries.kind, "deposit"),
+						eq(ledgerEntries.ref, depositHash)
+					)
+				)
+				.limit(1);
+			if (credited.length > 0) {
+				return false;
+			}
+			const reserved = await tx
+				.insert(refunds)
+				.values({
+					depositHash,
+					banAddress: banAddress.toLowerCase(),
+					amount: amount.toString(),
+				})
+				.onConflictDoNothing()
+				.returning({ depositHash: refunds.depositHash });
+			return reserved.length > 0;
+		});
+	}
+
+	async storeRefund(depositHash: string, sendHash: string): Promise<void> {
+		const sent = await this.db
+			.update(refunds)
+			.set({ status: "sent", sendHash, updatedAt: sql`now()` })
+			.where(
+				and(
+					eq(refunds.depositHash, depositHash),
+					eq(refunds.status, "reserved")
+				)
+			)
+			.returning({ depositHash: refunds.depositHash });
+		if (sent.length === 0) {
+			throw new Error(
+				`No reserved refund of deposit ${depositHash} to mark as sent with ${sendHash}`
+			);
+		}
+		this.log.info(`Refunded deposit ${depositHash} with ${sendHash}`);
+	}
+
+	async hasRefund(depositHash: string): Promise<boolean> {
+		const [refund] = await this.db
+			.select({ depositHash: refunds.depositHash })
+			.from(refunds)
+			.where(eq(refunds.depositHash, depositHash));
+		return refund !== undefined;
 	}
 
 	async reserveUserWithdrawal(
@@ -329,6 +397,27 @@ class PostgresUsersDepositsStorage implements UsersDepositsStorage {
 				amount
 			)} BAN, receipt: ${receipt}`
 		);
+	}
+
+	async getSwapToWBan(
+		banAddress: string,
+		timestamp: number
+	): Promise<MintReceipt | undefined> {
+		const [swap] = await this.db
+			.select({ receipt: ledgerEntries.ref, uuid: ledgerEntries.uuid })
+			.from(ledgerEntries)
+			.where(
+				and(
+					eq(ledgerEntries.kind, "swap_to_wban"),
+					eq(ledgerEntries.banAddress, banAddress.toLowerCase()),
+					eq(ledgerEntries.occurredAt, new Date(timestamp))
+				)
+			)
+			.limit(1);
+		if (!swap?.receipt) {
+			return undefined;
+		}
+		return { receipt: swap.receipt, uuid: swap.uuid ?? "" };
 	}
 
 	async storeUserSwapToBan(swap: SwapWBANToBan): Promise<void> {
@@ -442,6 +531,26 @@ class PostgresUsersDepositsStorage implements UsersDepositsStorage {
 		return swap !== undefined;
 	}
 
+	async reserveFreeSwap(from: string): Promise<boolean> {
+		const reserved = await this.db
+			.insert(gaslessSwaps)
+			.values({ banAddress: from.toLowerCase(), txnId: FREE_SWAP_RESERVED })
+			.onConflictDoNothing()
+			.returning({ banAddress: gaslessSwaps.banAddress });
+		return reserved.length > 0;
+	}
+
+	async releaseFreeSwap(from: string): Promise<void> {
+		await this.db
+			.delete(gaslessSwaps)
+			.where(
+				and(
+					eq(gaslessSwaps.banAddress, from.toLowerCase()),
+					eq(gaslessSwaps.txnId, FREE_SWAP_RESERVED)
+				)
+			);
+	}
+
 	async storeFreeSwap(from: string, txnId: string): Promise<void> {
 		await this.db
 			.insert(gaslessSwaps)
@@ -486,6 +595,12 @@ class PostgresUsersDepositsStorage implements UsersDepositsStorage {
 				tx,
 				entry.banAddress
 			);
+			if (
+				entry.kind === "deposit" &&
+				(await PostgresUsersDepositsStorage.wasRefunded(tx, entry.ref))
+			) {
+				return false;
+			}
 			const inserted = await tx
 				.insert(ledgerEntries)
 				.values(entry)
@@ -529,6 +644,20 @@ class PostgresUsersDepositsStorage implements UsersDepositsStorage {
 				balance.sub(entry.amount)
 			);
 		});
+	}
+
+	private static async wasRefunded(
+		tx: Transaction,
+		depositHash: string | null | undefined
+	): Promise<boolean> {
+		if (!depositHash) {
+			return false;
+		}
+		const [refund] = await tx
+			.select({ depositHash: refunds.depositHash })
+			.from(refunds)
+			.where(eq(refunds.depositHash, depositHash));
+		return refund !== undefined;
 	}
 
 	private static async lockAccount(

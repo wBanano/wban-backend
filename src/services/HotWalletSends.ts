@@ -1,7 +1,8 @@
 import * as banano from "@bananocoin/bananojs";
 import { BigNumber } from "ethers";
 import config from "../ledgerConfig";
-import { ReservedWithdrawal } from "../storage/postgres/WithdrawalReservations";
+
+type Reservation = { banAddress: string; amount: string; reservedAt: Date };
 
 export type AccountHistoryEntry = {
 	type: string;
@@ -24,7 +25,7 @@ export function rawAmount(ledgerAmount: string): string {
 	return BigNumber.from(ledgerAmount).mul(RAW_PER_LEDGER_UNIT).toString();
 }
 
-function earliestSendTime(reservation: ReservedWithdrawal): number {
+function earliestSendTime(reservation: Reservation): number {
 	return (
 		Math.floor(reservation.reservedAt.getTime() / 1_000) - CLOCK_SLACK_SECONDS
 	);
@@ -33,7 +34,7 @@ function earliestSendTime(reservation: ReservedWithdrawal): number {
 export function historyReachesBack(
 	history: AccountHistoryEntry[],
 	requested: number,
-	reservation: ReservedWithdrawal
+	reservation: Reservation
 ): boolean {
 	if (history.length < requested) {
 		return true;
@@ -44,7 +45,7 @@ export function historyReachesBack(
 
 export function matchingSends(
 	history: AccountHistoryEntry[],
-	reservation: ReservedWithdrawal
+	reservation: Reservation
 ): AccountHistoryEntry[] {
 	const raw = rawAmount(reservation.amount);
 	const notBefore = earliestSendTime(reservation);

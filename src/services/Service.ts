@@ -18,6 +18,7 @@ import { UsersDepositsService } from "./UsersDepositsService";
 import InvalidSignatureError from "../errors/InvalidSignatureError";
 import InvalidOwner from "../errors/InvalidOwner";
 import InsufficientBalanceError from "../errors/InsufficientBalanceError";
+import isBanAddress from "../models/requests/banAddress";
 import { ClaimResponse } from "../models/responses/ClaimResponse";
 import { Blockchain } from "../Blockchain";
 import ProcessingQueue from "./queuing/ProcessingQueue";
@@ -387,6 +388,22 @@ class Service {
 			throw new Error("Can't swap zero BAN");
 		}
 
+		const alreadySwapped = await this.usersDepositsService.getSwapToWBan(
+			from,
+			swap.timestamp
+		);
+		if (alreadySwapped) {
+			this.log.warn(
+				`Swap of ${amountStr} BAN from ${from} requested at ${swap.timestamp} was already stored, returning its receipt`
+			);
+			return {
+				...alreadySwapped,
+				wbanBalance: await this.blockchain.getWBanBalance(blockchainWallet),
+				gasless: false,
+				txnHash: "",
+			};
+		}
+
 		// check if deposits are greater than or equal to amount to swap
 		const availableBalance: BigNumber =
 			await this.usersDepositsService.getUserAvailableBalance(from);
@@ -412,54 +429,80 @@ class Service {
 			uuid
 		);
 
-		// if first wrap request, make a gasless transaction
-		let gasless = false;
-		let txnHash = "";
+		try {
+			const txnHash = await this.mintGaslessIfFirstWrap(
+				swap,
+				amount,
+				receipt,
+				uuid
+			);
+			return {
+				receipt,
+				uuid,
+				wbanBalance,
+				gasless: txnHash !== undefined,
+				txnHash: txnHash ?? "",
+			};
+		} catch (err) {
+			this.log.error(
+				`Gasless wrap of ${amountStr} BAN from ${from} failed, returning the receipt to mint by hand`,
+				err
+			);
+			return { receipt, uuid, wbanBalance, gasless: false, txnHash: "" };
+		}
+	}
+
+	private async mintGaslessIfFirstWrap(
+		swap: SwapBanToWBAN,
+		amount: BigNumber,
+		receipt: string,
+		uuid: string
+	): Promise<string | undefined> {
+		const { from, blockchainWallet } = swap;
+		const amountStr = swap.amount;
 		const wrapCount = (
 			await this.usersDepositsService.getSwaps(blockchainWallet, from)
 		).length;
 		if (
-			this.relayerSigner &&
-			wrapCount === 1 &&
-			amountStr >= Number(config.BlockchainGasLessBananoThreshold)
+			!this.relayerSigner ||
+			wrapCount !== 1 ||
+			amountStr < Number(config.BlockchainGasLessBananoThreshold)
 		) {
-			const cryptoBalance = await this.relayerSigner.provider.getBalance(
-				blockchainWallet
-			);
-			const cryptoThreshold = ethers.utils.parseEther(
-				config.BlockchainGasLessCryptoBalanceThreshold.toString()
-			);
-			if (cryptoBalance.lte(cryptoThreshold)) {
-				this.log.info(
-					`Gasless wrap from ${blockchainWallet} from ${amountStr} BAN with UUID ${uuid} and receipt ${receipt}`
-				);
-				gasless = true;
-				// eslint-disable-next-line camelcase
-				const wBAN = WBANTokenWithPermit__factory.connect(
-					config.WBANContractAddress,
-					this.relayerSigner
-				);
-				const sig: Signature = ethers.utils.splitSignature(receipt);
-				const tx: RelayedContractTransaction = (await wBAN.mintWithReceipt(
-					blockchainWallet,
-					amount,
-					uuid,
-					sig.v,
-					sig.r,
-					sig.s
-				)) as RelayedContractTransaction;
-				const relayedTx = await this.waitForRelayedTx(tx.transactionId);
-				txnHash = relayedTx.hash;
-			} else {
-				this.log.warn(
-					`Gasless wrap from ${blockchainWallet} ignored. Balance of ${ethers.utils.formatEther(
-						cryptoBalance
-					)} > ${ethers.utils.formatEther(cryptoThreshold)} ETH`
-				);
-			}
+			return undefined;
 		}
-
-		return { receipt, uuid, wbanBalance, gasless, txnHash };
+		const cryptoBalance = await this.relayerSigner.provider.getBalance(
+			blockchainWallet
+		);
+		const cryptoThreshold = ethers.utils.parseEther(
+			config.BlockchainGasLessCryptoBalanceThreshold.toString()
+		);
+		if (cryptoBalance.gt(cryptoThreshold)) {
+			this.log.warn(
+				`Gasless wrap from ${blockchainWallet} ignored. Balance of ${ethers.utils.formatEther(
+					cryptoBalance
+				)} > ${ethers.utils.formatEther(cryptoThreshold)} ETH`
+			);
+			return undefined;
+		}
+		this.log.info(
+			`Gasless wrap from ${blockchainWallet} from ${amountStr} BAN with UUID ${uuid} and receipt ${receipt}`
+		);
+		// eslint-disable-next-line camelcase
+		const wBAN = WBANTokenWithPermit__factory.connect(
+			config.WBANContractAddress,
+			this.relayerSigner
+		);
+		const sig: Signature = ethers.utils.splitSignature(receipt);
+		const tx: RelayedContractTransaction = (await wBAN.mintWithReceipt(
+			blockchainWallet,
+			amount,
+			uuid,
+			sig.v,
+			sig.r,
+			sig.s
+		)) as RelayedContractTransaction;
+		const relayedTx = await this.waitForRelayedTx(tx.transactionId);
+		return relayedTx.hash;
 	}
 
 	async swapToBAN(swap: SwapWBANToBan): Promise<string> {
@@ -525,9 +568,26 @@ class Service {
 			throw new Error("Relayer is turned off. Skipping gasless swap requests");
 		}
 		const from = swap.recipient;
-		if (!from) {
+		if (!from || !ethers.utils.isAddress(from)) {
 			this.log.warn("Missing address from transaction");
 			throw new Error("Missing address from transaction");
+		}
+		if (!isBanAddress(swap.banWallet)) {
+			throw new Error(`${swap.banWallet} is not a BAN address`);
+		}
+		const sellAmount = ethers.utils.parseEther(swap.permit.amount);
+		if (
+			sellAmount.lt(
+				ethers.utils.parseEther(String(config.BlockchainGasLessBananoThreshold))
+			)
+		) {
+			throw new Error(
+				`Gasless swaps start at ${config.BlockchainGasLessBananoThreshold} wBAN`
+			);
+		}
+		const deadline = BigNumber.from(swap.permit.deadline);
+		if (deadline.lte(Math.floor(Date.now() / 1_000))) {
+			throw new Error("The wBAN permit has expired");
 		}
 		// check user balance is below ETH threshold
 		const cryptoBalance = await this.relayerSigner.provider.getBalance(from);
@@ -538,17 +598,26 @@ class Service {
 			this.log.warn(`Crypto balance of ${from} is above threshold`);
 			throw new Error(`Crypto balance of ${from} is above threshold`);
 		}
-		// check if address is registered in the bridge
-		if (!(await this.usersDepositsService.isClaimedFromETH(from))) {
-			this.log.warn(`${from} is not registered in the bridge`);
-			throw new Error(`${from} is not registered in the bridge`);
+		if (!(await this.usersDepositsService.hasClaim(swap.banWallet, from))) {
+			this.log.warn(`${from} has no confirmed claim on ${swap.banWallet}`);
+			throw new Error(`${from} has no confirmed claim on ${swap.banWallet}`);
 		}
-		// check if free swap was already done
-		if (await this.usersDepositsService.isFreeSwapAlreadyDone(swap.banWallet)) {
+		if (
+			!(await this.blockchain.isPermitSignedBy(
+				from,
+				config.WBANGaslessSwapAddress,
+				sellAmount,
+				deadline,
+				swap.permit.signature
+			))
+		) {
+			this.log.warn(`wBAN permit for a gasless swap isn't signed by ${from}`);
+			throw new Error(`The wBAN permit isn't signed by ${from}`);
+		}
+		if (!(await this.usersDepositsService.reserveFreeSwap(swap.banWallet))) {
 			this.log.warn(`${from} has already done a free swap`);
 			throw new Error(`${from} has already done a free swap`);
 		}
-		// relay swap transaction
 		const sig: Signature = ethers.utils.splitSignature(swap.permit.signature);
 		const gaslessSwap = WBANGaslessSwap__factory.connect(
 			config.WBANGaslessSwapAddress,
@@ -559,32 +628,32 @@ class Service {
 				swap.permit.amount
 			} wBAN with deadline ${swap.permit.deadline.toString()}...`
 		);
+		let tx: RelayedContractTransaction;
 		try {
-			const tx: RelayedContractTransaction =
-				(await gaslessSwap.swapWBANToCrypto(
-					from,
-					ethers.utils.parseEther(swap.permit.amount),
-					BigNumber.from(swap.permit.deadline),
-					sig.v,
-					sig.r,
-					sig.s,
-					swap.swapCallData,
-					{ gasLimit: swap.gasLimit + config.BlockchainGasLessGasBuffer }
-				)) as RelayedContractTransaction;
-			const relayedTx = await this.waitForRelayedTx(tx.transactionId);
-			// store free swap request
-			await this.usersDepositsService.storeFreeSwap(
-				swap.banWallet,
-				tx.transactionId
-			);
-			return {
-				txnId: tx.transactionId,
-				txnHash: relayedTx.hash,
-			};
+			tx = (await gaslessSwap.swapWBANToCrypto(
+				from,
+				sellAmount,
+				deadline,
+				sig.v,
+				sig.r,
+				sig.s,
+				swap.swapCallData,
+				{ gasLimit: swap.gasLimit + config.BlockchainGasLessGasBuffer }
+			)) as RelayedContractTransaction;
 		} catch (err: unknown) {
-			this.log.error("Couldn't proceed with gasless swap", err);
+			this.log.error("Couldn't relay the gasless swap", err);
+			await this.usersDepositsService.releaseFreeSwap(swap.banWallet);
 			throw err;
 		}
+		await this.usersDepositsService.storeFreeSwap(
+			swap.banWallet,
+			tx.transactionId
+		);
+		const relayedTx = await this.waitForRelayedTx(tx.transactionId);
+		return {
+			txnId: tx.transactionId,
+			txnHash: relayedTx.hash,
+		};
 	}
 
 	checkSignature(

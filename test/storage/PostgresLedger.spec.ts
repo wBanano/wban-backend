@@ -8,6 +8,7 @@ import InsufficientBalanceError from "../../src/errors/InsufficientBalanceError"
 import { LedgerMarker } from "../../src/storage/LedgerMarker";
 import { LedgerHealth } from "../../src/storage/postgres/LedgerHealth";
 import { WithdrawalReservations } from "../../src/storage/postgres/WithdrawalReservations";
+import { RefundReservations } from "../../src/storage/postgres/RefundReservations";
 import {
 	assertSchemaIsCurrent,
 	chainIdentityFromConfig,
@@ -20,6 +21,7 @@ import {
 	ledgerEntries,
 	migrationDiscrepancies,
 	accounts,
+	refunds,
 } from "../../src/storage/postgres/schema";
 import { PostgresHarness, postgresLedger } from "../helpers/ledgers";
 
@@ -126,9 +128,9 @@ describe("Postgres ledger", () => {
 			const [reserved] = await reservations.list();
 			await reservations.confirm(reserved.id, "W1");
 			expect(await svc.getWithdrawals(ALICE)).to.have.length(1);
-			expect(
-				await reservations.recordedWithdrawalHashes(["W1", "W2"])
-			).to.have.keys("W1");
+			expect(await reservations.recordedSendHashes(["W1", "W2"])).to.have.keys(
+				"W1"
+			);
 			await expect(reservations.confirm(reserved.id, "W2")).to.be.rejectedWith(
 				"is not reserved"
 			);
@@ -141,6 +143,94 @@ describe("Postgres ledger", () => {
 			expect(await reservations.get(reserved.id)).to.equal(undefined);
 			expect(await health.balanceMismatches()).to.have.length(0);
 			await expect(reservations.release(reserved.id)).to.be.rejectedWith(
+				"is not reserved"
+			);
+		});
+	});
+
+	describe("Refunds", () => {
+		it("reserves a refund once per deposit and never credits it afterwards", async () => {
+			expect(await svc.reserveRefund("R1", BOB, BAN("2"))).to.equal(true);
+			expect(await svc.reserveRefund("R1", BOB, BAN("2"))).to.equal(false);
+			await svc.storeUserDeposit(BOB, BAN("2"), T0, "R1");
+			expect((await svc.getUserAvailableBalance(BOB)).toString()).to.equal("0");
+			expect(await svc.getDeposits(BOB)).to.have.length(0);
+		});
+
+		it("refuses to refund a deposit that was credited", async () => {
+			expect(await svc.reserveRefund("D1", ALICE, BAN("10"))).to.equal(false);
+			expect(await balance()).to.equal(BAN("10").toString());
+		});
+
+		it("marks a refund sent once and reports one reserved for 10 minutes as stuck", async () => {
+			await svc.reserveRefund("R1", BOB, BAN("2"));
+			await svc.reserveRefund("R2", BOB, BAN("3"));
+			await ledger.db
+				.update(refunds)
+				.set({ createdAt: sql`now() - interval '11 minutes'` });
+			await svc.storeRefund("R1", "S1");
+			await expect(svc.storeRefund("R1", "S2")).to.be.rejectedWith(
+				"No reserved refund"
+			);
+			const stuck = await health.stuckRefunds();
+			expect(
+				stuck.map((refund) => [
+					refund.depositHash,
+					refund.banAddress,
+					refund.amount,
+				])
+			).to.deep.equal([["R2", BOB, BAN("3").toString()]]);
+			expect((await health.report()).stuckRefunds).to.have.length(1);
+		});
+
+		it("tells whether a deposit was sent back", async () => {
+			expect(await svc.hasRefund("R1")).to.equal(false);
+			await svc.reserveRefund("R1", BOB, BAN("2"));
+			expect(await svc.hasRefund("R1")).to.equal(true);
+		});
+
+		it("records a send hash for one refund only", async () => {
+			await svc.reserveRefund("R1", BOB, BAN("2"));
+			await svc.reserveRefund("R2", BOB, BAN("2"));
+			await svc.storeRefund("R1", "S1");
+			const err = await svc.storeRefund("R2", "S1").catch((e) => e);
+			expect(err.cause).to.include({ constraint: "refunds_send_hash" });
+		});
+
+		it("sees an open withdrawal and an open refund that look the same", async () => {
+			const refundReservations = new RefundReservations(ledger.db);
+			await svc.reserveUserWithdrawal(ALICE, BAN("2"), T0 + 1);
+			await svc.reserveRefund("R1", ALICE, BAN("2"));
+			const [withdrawal] = await reservations.list();
+			const [refund] = await refundReservations.list();
+			expect(await reservations.otherOpenSends(withdrawal)).to.deep.equal([
+				{ kind: "refund", id: "R1" },
+			]);
+			expect(await refundReservations.otherOpenSends(refund)).to.deep.equal([
+				{ kind: "withdrawal", id: String(withdrawal.id) },
+			]);
+			await svc.storeUserWithdrawal(ALICE, BAN("2"), T0 + 1, "W1");
+			expect(
+				await refundReservations.recordedSendHashes(["W1", "S9"])
+			).to.have.keys("W1");
+		});
+
+		it("confirms a stuck refund with an unrecorded send", async () => {
+			const refundReservations = new RefundReservations(ledger.db);
+			await svc.reserveRefund("R1", BOB, BAN("2"));
+			await svc.reserveRefund("R2", BOB, BAN("2"));
+			await svc.storeRefund("R2", "S2");
+			expect(await refundReservations.get("R1")).to.include({
+				banAddress: BOB,
+				amount: BAN("2").toString(),
+			});
+			expect(await refundReservations.get("R2")).to.equal(undefined);
+			expect(
+				await refundReservations.recordedSendHashes(["S1", "S2"])
+			).to.have.keys("S2");
+			await refundReservations.confirm("R1", "S1");
+			expect(await refundReservations.list()).to.have.length(0);
+			await expect(refundReservations.confirm("R1", "S3")).to.be.rejectedWith(
 				"is not reserved"
 			);
 		});

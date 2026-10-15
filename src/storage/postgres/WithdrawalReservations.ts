@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { BigNumber } from "ethers";
 import { Database } from "./database";
+import { OpenSend, openSendsLike, recordedSendHashes } from "./recordedSends";
 import { accounts, ledgerEntries } from "./schema";
 
 export type ReservedWithdrawal = {
@@ -55,20 +56,16 @@ export class WithdrawalReservations {
 		return row as ReservedWithdrawal | undefined;
 	}
 
-	async recordedWithdrawalHashes(hashes: string[]): Promise<Set<string>> {
-		if (hashes.length === 0) {
-			return new Set();
-		}
-		const rows = await this.db
-			.select({ ref: ledgerEntries.ref })
-			.from(ledgerEntries)
-			.where(
-				and(
-					eq(ledgerEntries.kind, "withdrawal"),
-					inArray(ledgerEntries.ref, hashes)
-				)
-			);
-		return new Set(rows.map((row) => row.ref ?? ""));
+	async recordedSendHashes(hashes: string[]): Promise<Set<string>> {
+		return recordedSendHashes(this.db, hashes);
+	}
+
+	async otherOpenSends(reservation: ReservedWithdrawal): Promise<OpenSend[]> {
+		return (
+			await openSendsLike(this.db, reservation.banAddress, reservation.amount)
+		).filter(
+			(open) => open.kind !== "withdrawal" || open.id !== String(reservation.id)
+		);
 	}
 
 	async confirm(id: number, hash: string): Promise<void> {

@@ -28,7 +28,7 @@ class LedgerWatchdog {
 
 	async check(): Promise<void> {
 		try {
-			const { stuckWithdrawals, balanceMismatches } =
+			const { stuckWithdrawals, stuckRefunds, balanceMismatches } =
 				await this.health.report();
 			stuckWithdrawals.forEach((withdrawal) =>
 				this.log.error(
@@ -37,6 +37,15 @@ class LedgerWatchdog {
 					)} BAN to ${
 						withdrawal.banAddress
 					} is reserved since ${withdrawal.reservedAt.toISOString()}, resolve it with yarn ledger:withdrawal`
+				)
+			);
+			stuckRefunds.forEach((refund) =>
+				this.log.error(
+					`Refund of deposit ${
+						refund.depositHash
+					} of ${ethers.utils.formatEther(refund.amount)} BAN to ${
+						refund.banAddress
+					} is reserved since ${refund.reservedAt.toISOString()}, check the hot wallet history for its send`
 				)
 			);
 			balanceMismatches.forEach((mismatch) =>

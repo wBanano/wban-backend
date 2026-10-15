@@ -77,6 +77,24 @@ ledgers.forEach(({ name, open }) => {
 				expect(await svc.containsUserSwapToBan(swap)).to.equal(true);
 			});
 
+			it("finds a wrap by its request time", async () => {
+				await svc.storeUserDeposit(ALICE, BAN("10"), T0, "D1");
+				await svc.storeUserSwapToWBan(
+					ALICE,
+					WALLET,
+					BAN("4"),
+					T0 + 20,
+					"0xreceipt1",
+					"1700000000020"
+				);
+				expect(await svc.getSwapToWBan("Ban_1Alice", T0 + 20)).to.deep.equal({
+					receipt: "0xreceipt1",
+					uuid: "1700000000020",
+				});
+				expect(await svc.getSwapToWBan(ALICE, T0 + 21)).to.equal(undefined);
+				expect(await svc.getSwapToWBan(BOB, T0 + 20)).to.equal(undefined);
+			});
+
 			it("records a withdrawal request once", async () => {
 				await svc.storeUserDeposit(ALICE, BAN("10"), T0, "D1");
 				const withdraw = async () => {
@@ -233,6 +251,25 @@ ledgers.forEach(({ name, open }) => {
 			it("remembers a free swap", async () => {
 				expect(await svc.isFreeSwapAlreadyDone(ALICE)).to.equal(false);
 				await svc.storeFreeSwap("Ban_1Alice", "txn-1");
+				expect(await svc.isFreeSwapAlreadyDone(ALICE)).to.equal(true);
+			});
+
+			it("reserves a free swap once", async () => {
+				expect(await svc.reserveFreeSwap("Ban_1Alice")).to.equal(true);
+				expect(await svc.reserveFreeSwap(ALICE)).to.equal(false);
+				expect(await svc.isFreeSwapAlreadyDone(ALICE)).to.equal(true);
+				await svc.storeFreeSwap(ALICE, "txn-1");
+				expect(await svc.reserveFreeSwap(ALICE)).to.equal(false);
+				expect(await svc.reserveFreeSwap(BOB)).to.equal(true);
+			});
+
+			it("releases a free swap reservation but never a recorded swap", async () => {
+				await svc.reserveFreeSwap(ALICE);
+				await svc.releaseFreeSwap(ALICE);
+				expect(await svc.isFreeSwapAlreadyDone(ALICE)).to.equal(false);
+				expect(await svc.reserveFreeSwap(ALICE)).to.equal(true);
+				await svc.storeFreeSwap(ALICE, "txn-1");
+				await svc.releaseFreeSwap(ALICE);
 				expect(await svc.isFreeSwapAlreadyDone(ALICE)).to.equal(true);
 			});
 
