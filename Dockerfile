@@ -1,25 +1,19 @@
-#FROM node:14-alpine as builder
-#WORKDIR /app
-#COPY . .
-#RUN yarn install && yarn build
-
-#FROM node:14-alpine as runtime
-#WORKDIR /app
-#COPY --from=builder /app/dist ./dist
-#COPY --from=builder ["/app/package.json", "/app/yarn.lock", "./"]
-#RUN yarn install --prod
-
-#EXPOSE 3000
-
-#CMD [ "node", "./dist/app.js" ]
-
-FROM node:22-alpine
+FROM node:22-alpine AS builder
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile
 COPY . .
+RUN yarn build
+RUN yarn install --frozen-lockfile --production && yarn cache clean
 
-RUN yarn install
-
-CMD ["yarn", "start"]
+FROM node:22-alpine
+WORKDIR /app
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/drizzle ./drizzle
+COPY package.json ./
 
 EXPOSE 3000
+
+CMD ["node", "dist/app.js"]

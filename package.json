@@ -4,7 +4,7 @@
 	"description": "wBAN backend for swaps",
 	"main": "dist/app.js",
 	"scripts": {
-		"start": "ts-node src/app.ts",
+		"start": "node dist/app.js",
 		"dev": "nodemon src/app.ts",
 		"build": "tsc --project ./",
 		"test": "NODE_ENV=test yarn nyc --reporter=text --reporter=html --check-coverage=true mocha",
